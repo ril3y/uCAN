@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, Button, Switch
+from textual.widgets import Header, Static, Button, Switch
 from textual.events import Click
 from textual.reactive import reactive
 from textual.binding import Binding
@@ -9,6 +9,7 @@ from rich.text import Text
 import asyncio
 import logging
 from datetime import datetime
+from typing import List
 
 from .widgets.message_log import MessageLogWidget
 from .widgets.command_input import CommandInputWidget
@@ -17,7 +18,7 @@ from .widgets.help_modal import HelpModal
 from .widgets.custom_header import CustomHeader
 from .widgets.id_filter_widget import IDFilterWidget
 from .widgets.view_settings_modal import ViewSettingsModal
-from .widgets.switch_view import SwitchViewWidget
+from .widgets.status_bar import StatusBarWidget
 from .services.serial_service import SerialService
 from .models.can_message import CANMessage, MessageStats, MessageFilter
 from .parsers import (
@@ -36,7 +37,7 @@ logger.setLevel(logging.INFO)
 
 # Only add file handler if not already added
 if not logger.handlers:
-    file_handler = logging.FileHandler('/home/ril3y/RPICAN/can.log')
+    file_handler = logging.FileHandler('/home/ril3y/UCAN/can.log')
     file_handler.setFormatter(logging.Formatter('%(asctime)s [%(name)s:%(levelname)s] %(message)s'))
     logger.addHandler(file_handler)
     logger.propagate = False  # Prevent console output
@@ -47,7 +48,7 @@ can_logger.setLevel(logging.DEBUG)
 
 # Only add file handler if not already added
 if not can_logger.handlers:
-    can_file_handler = logging.FileHandler('/home/ril3y/RPICAN/can.log')
+    can_file_handler = logging.FileHandler('/home/ril3y/UCAN/can.log')
     can_file_handler.setFormatter(logging.Formatter('%(asctime)s [CAN:%(levelname)s] %(message)s'))
     can_logger.addHandler(can_file_handler)
     can_logger.propagate = False  # Prevent console output
@@ -322,8 +323,15 @@ class CANBridgeApp(App):
         self.parser_registry = ParserRegistry()
         self._setup_parsers()
         
-        # Initialize modern view system
-        self.view_registry = ModernViewRegistry()
+        # Initialize modern view system (kept for view discovery only)
+        self.view_registry = ModernViewRegistry()  # NOTE: Only used for view discovery, not routing
+        
+        # Simple CAN ID routing system - direct message delivery
+        self.can_id_handlers = {}  # {can_id: active_widget}
+        self.active_view_widget = None
+        
+        # Status bar for connection/message stats
+        self.status_bar = None
         
         # State
         self.paused = False
@@ -360,17 +368,31 @@ class CANBridgeApp(App):
             with Container(id="command_container"):
                 yield CommandInputWidget(id="command_input")
         
-        yield Footer()
+        # Custom status bar instead of Footer
+        yield StatusBarWidget(id="status_bar")
     
     def on_mount(self) -> None:
         """Initialize the application after mounting."""
-        can_logger.info("=" * 50)
-        can_logger.info("APPLICATION_START: CAN Bridge TUI v1.0 started")
-        can_logger.info("=" * 50)
+        # Clear log file for fresh debugging session
+        try:
+            from pathlib import Path
+            log_file = Path("can.log")
+            if log_file.exists():
+                with open(log_file, 'w') as f:
+                    f.write("")
+        except:
+            pass
+            
+        can_logger.error("=" * 60)
+        can_logger.error("=== NEW SESSION: Simple CAN ID Routing System Active ===")
+        can_logger.error("=" * 60)
         
         # Set up command input callback
         command_input = self.query_one("#command_input", CommandInputWidget)
         command_input.set_command_callback(self.on_command_submitted)
+        
+        # Initialize status bar
+        self.status_bar = self.query_one("#status_bar", StatusBarWidget)
         
         # View system is auto-configured during registry initialization
         can_logger.info(f"VIEW_SETUP: Auto-discovered {len(self.view_registry.get_available_view_names())} views")
@@ -611,6 +633,13 @@ class CANBridgeApp(App):
                 # Update statistics
                 stats = self.query_one("#stats", StatsWidget)
                 stats.update_stats(message)
+                
+                # Update status bar message counts
+                if self.status_bar:
+                    stats_data = stats.get_stats()
+                    total_messages = stats_data.get("total_messages", 0)
+                    total_errors = stats_data.get("total_errors", 0)
+                    self.status_bar.update_message_stats(total_messages, total_errors)
             
         except Exception as e:
             can_logger.error(f"MESSAGE_PARSE_ERROR: raw='{raw_message}', error={e}")
@@ -628,6 +657,13 @@ class CANBridgeApp(App):
             stats.set_connection_status(connected, port)
         except Exception as e:
             logger.error(f"Failed to update stats widget: {e}")
+        
+        # Update custom status bar
+        if self.status_bar:
+            if connected:
+                self.status_bar.update_connection_status("Connected", port)
+            else:
+                self.status_bar.update_connection_status("Disconnected")
         
         if connected:
             self.sub_title = f"Connected to {port}"
@@ -913,11 +949,12 @@ class CANBridgeApp(App):
         """Compose the main panel content based on current view mode."""
         if self.current_view_mode == "custom_view":
             # Show custom view (switch dashboard for 0x500 messages)
-            yield SwitchViewWidget(id="switch_view")
+            # yield SwitchViewWidget(id="switch_view")
+            pass  # Temporarily disabled
         elif self.current_view_mode == "split_view":
             # Show both custom view and message log
             with Vertical():
-                yield SwitchViewWidget(id="switch_view")
+                # yield SwitchViewWidget(id="switch_view")  # Temporarily disabled
                 yield MessageLogWidget(id="message_log")
         else:
             # Default: message log only
@@ -938,7 +975,7 @@ class CANBridgeApp(App):
         # Create debug logger if it doesn't exist
         debug_logger = logging.getLogger('view_debug')
         if not debug_logger.handlers:
-            debug_handler = logging.FileHandler('/home/ril3y/RPICAN/view_debug.log')
+            debug_handler = logging.FileHandler('/home/ril3y/UCAN/view_debug.log')
             debug_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
             debug_logger.addHandler(debug_handler)
             debug_logger.setLevel(logging.DEBUG)
@@ -992,7 +1029,7 @@ class CANBridgeApp(App):
                 message_log.add_message(info_msg)
             elif self.current_view_mode == "custom_view":
                 # Add to switch view console if available
-                switch_view = self.query_one("#switch_view", SwitchViewWidget)
+                # switch_view = self.query_one("#switch_view", SwitchViewWidget)
                 switch_view.log_console(f"View mode changed to: {self.current_view_mode}", "info")
         except Exception as e:
             logger.warning(f"Could not add confirmation message to UI: {e}")
@@ -1060,6 +1097,13 @@ class CANBridgeApp(App):
                     # Connect the widget to the view
                     self.view_registry.connect_view_widget(view_name, widget)
                     logger.info(f"Connected widget to {view_name}")
+                    
+                    # Register widget for direct CAN ID routing (simple approach)
+                    if hasattr(view, 'get_supported_can_ids'):
+                        can_ids = view.get_supported_can_ids()
+                        self.set_active_view_widget(widget, can_ids)
+                        logger.error(f"REGISTERED: {view_name} widget for CAN IDs {[f'0x{cid:03X}' for cid in can_ids]}")
+                    
                     debug_logger.info(f"Successfully created custom view widget")
                 else:
                     debug_logger.error(f"View {view_name} not found in registry")
@@ -1132,82 +1176,77 @@ class CANBridgeApp(App):
             return f"{words} View"
     
     def _route_message_to_widgets(self, message: CANMessage, parsed_message=None):
-        """Route messages to appropriate widgets based on current view mode."""
+        """Route messages directly to registered handlers (simple approach)."""
         try:
-            logger.debug(f"Routing message to widgets - view mode: {self.current_view_mode}, CAN ID: 0x{message.can_id:03X}")
+            logger.error(f"SIMPLE_ROUTE: CAN ID 0x{message.can_id:03X}, handlers: {list(self.can_id_handlers.keys())}")
             
-            if self.current_view_mode == "message_log":
-                # Traditional message log only
-                try:
-                    message_log = self.query_one("#message_log", MessageLogWidget)
-                    message_log.add_message(message, parsed_message)
-                    logger.debug("Added message to message log")
-                except Exception as e:
-                    logger.error(f"Failed to add message to message log: {e}")
+            # Check if we have a direct handler for this CAN ID
+            if message.can_id in self.can_id_handlers:
+                widget = self.can_id_handlers[message.can_id]
+                logger.error(f"SIMPLE_ROUTE: Found handler {type(widget).__name__} for CAN ID 0x{message.can_id:03X}")
                 
-            elif self.current_view_mode.endswith("_view") and self.current_view_mode != "split_view":
-                # Custom view mode - route messages to the custom view widget
-                logger.debug(f"In custom view mode {self.current_view_mode}, routing CAN ID 0x{message.can_id:03X}")
                 try:
-                    # Look for the custom view widget
-                    custom_widget = self.query_one("#custom_view_widget")
-                    
-                    # Check if it's a SwitchViewWidget and can handle this message
-                    if hasattr(custom_widget, 'update_switch_states'):
-                        custom_widget.update_switch_states(message, parsed_message)
-                        logger.debug(f"Routed message to custom widget: {type(custom_widget).__name__}")
+                    # Route based on CAN ID to appropriate widget method
+                    if message.can_id == 0x500 and hasattr(widget, 'update_switch_states'):
+                        logger.error(f"SIMPLE_ROUTE: Calling update_switch_states for 0x{message.can_id:03X}")
+                        widget.update_switch_states(message, parsed_message)
+                    elif message.can_id == 0x600 and hasattr(widget, 'update_system_status'):
+                        logger.error(f"SIMPLE_ROUTE: Calling update_system_status for 0x{message.can_id:03X}")
+                        widget.update_system_status(message, parsed_message)
                     else:
-                        logger.debug(f"Custom widget {type(custom_widget).__name__} doesn't handle CAN messages")
+                        logger.error(f"SIMPLE_ROUTE: Widget {type(widget).__name__} has no handler for CAN ID 0x{message.can_id:03X}")
                         
                 except Exception as e:
-                    logger.error(f"Could not route to custom view widget: {e}")
-                    
-            elif self.current_view_mode == "custom_view":
-                # Legacy custom view mode for backward compatibility
-                logger.debug(f"In legacy custom view mode, routing CAN ID 0x{message.can_id:03X}")
-                if message.can_id == 0x500:
+                    logger.error(f"SIMPLE_ROUTE: Error calling widget method: {e}")
+            else:
+                # No direct handler - fall back to message log if in message_log mode
+                if self.current_view_mode == "message_log":
                     try:
-                        switch_view = self.query_one("#switch_view", SwitchViewWidget)
-                        switch_view.update_switch_states(message, parsed_message)
-                        logger.debug("Routed 0x500 message to switch view")
+                        message_log = self.query_one("#message_log", MessageLogWidget)
+                        message_log.add_message(message, parsed_message)
+                        logger.debug("Added message to message log (no direct handler)")
                     except Exception as e:
-                        logger.error(f"Could not route to switch view: {e}")
+                        logger.error(f"Failed to add message to message log: {e}")
                 else:
-                    # For non-0x500 messages in custom view mode, we could show them
-                    # in a different way or log them to console
-                    try:
-                        switch_view = self.query_one("#switch_view", SwitchViewWidget)
-                        switch_view.log_console(
-                            f"CAN {message.type}: ID=0x{message.can_id:03X} Data=[{' '.join(f'{b:02X}' for b in message.data)}]",
-                            "info"
-                        )
-                        logger.debug(f"Logged non-0x500 message to switch view console")
-                    except Exception as e:
-                        logger.error(f"Could not log to switch view console: {e}")
-                        
-            elif self.current_view_mode == "split_view":
-                # Both message log and custom view
-                try:
-                    message_log = self.query_one("#message_log", MessageLogWidget)
-                    message_log.add_message(message, parsed_message)
-                except Exception as e:
-                    logger.debug(f"Could not add to message log in split view: {e}")
-                
-                if message.can_id == 0x500:
-                    try:
-                        switch_view = self.query_one("#switch_view", SwitchViewWidget)
-                        switch_view.update_switch_states(message, parsed_message)
-                    except Exception as e:
-                        logger.debug(f"Could not route to switch view in split mode: {e}")
+                    logger.error(f"SIMPLE_ROUTE: No handler for CAN ID 0x{message.can_id:03X}, view_mode={self.current_view_mode}")
                         
         except Exception as e:
-            logger.error(f"Error routing message to widgets: {e}")
+            logger.error(f"Error routing message: {e}")
             # Fallback: try to log somewhere
             try:
                 message_log = self.query_one("#message_log", MessageLogWidget)
                 message_log.add_message(message, parsed_message)
             except:
                 pass  # Give up gracefully
+
+    def register_can_id_handler(self, can_id: int, widget) -> None:
+        """Register a widget to receive messages for a specific CAN ID."""
+        logger.error(f"REGISTER_HANDLER: CAN ID 0x{can_id:03X} -> {type(widget).__name__}")
+        self.can_id_handlers[can_id] = widget
+    
+    def unregister_can_id_handler(self, can_id: int) -> None:
+        """Unregister a CAN ID handler."""
+        if can_id in self.can_id_handlers:
+            logger.error(f"UNREGISTER_HANDLER: CAN ID 0x{can_id:03X}")
+            del self.can_id_handlers[can_id]
+    
+    def set_active_view_widget(self, widget, can_ids: List[int]) -> None:
+        """Set the active view widget and register it for specific CAN IDs."""
+        logger.error(f"SET_ACTIVE_VIEW: {type(widget).__name__} for CAN IDs {[f'0x{can_id:03X}' for can_id in can_ids]}")
+        
+        # Clear existing handlers
+        self.can_id_handlers.clear()
+        
+        # Register new widget for all its CAN IDs
+        self.active_view_widget = widget
+        for can_id in can_ids:
+            self.register_can_id_handler(can_id, widget)
+    
+    def clear_active_view_widget(self) -> None:
+        """Clear the active view widget and all CAN ID handlers."""
+        logger.error("CLEAR_ACTIVE_VIEW: Clearing all handlers")
+        self.active_view_widget = None
+        self.can_id_handlers.clear()
     
     async def apply_settings(self, settings: dict):
         """Apply new connection settings."""

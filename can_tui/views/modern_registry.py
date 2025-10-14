@@ -219,9 +219,7 @@ class ModernViewRegistry:
             List of (value, description) tuples for dropdown options
         """
         # Textual Select expects (description, value) tuples
-        options = [
-            ("Message Log - Traditional scrolling message display", "message_log")
-        ]
+        options = []
         
         # Add each registered view
         for view_name, view in self.registered_views.items():
@@ -234,9 +232,16 @@ class ModernViewRegistry:
                 key = view_name.lower().replace(" ", "_")
                 options.append((view_name, key))
         
-        # Add split view option
-        if len(self.registered_views) > 0:
-            options.append(("Split View - Custom view + message log", "split_view"))
+        # Sort by priority (Console View should be first as it has lowest priority)
+        def get_priority(option):
+            view_key = option[1]
+            # Find view by key
+            for view_name, view in self.registered_views.items():
+                if view_name.lower().replace(" ", "_") == view_key:
+                    return -view.get_priority()  # Negative for reverse sort (low priority first)
+            return 0
+        
+        options.sort(key=get_priority)
         
         return options
     

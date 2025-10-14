@@ -102,7 +102,7 @@ config:filter:0x100,0x200,0x300
 void setup() {
     Serial.begin(115200);
     // Initialize CAN at 500kbps
-    Serial.println("STATUS;CONNECTED;RPICAN Ready");
+    Serial.println("STATUS;CONNECTED;UCAN Ready");
 }
 
 void loop() {

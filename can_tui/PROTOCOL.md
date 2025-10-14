@@ -247,7 +247,7 @@ control:<ACTION>
 
 ```
 # Device startup
-> STATUS;CONNECTED;RPICAN v1.0;Ready
+> STATUS;CONNECTED;UCAN v1.0;Ready
 > STATUS;CONFIG;CAN initialized;500kbps
 
 # TUI configures device

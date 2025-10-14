@@ -13,8 +13,48 @@ class CANCommandValidator(Validator):
         if not value:
             return ValidationResult.success()
         
-        # Check for send command format: send:ID:DATA
-        if value.startswith("send:"):
+        # Check if it looks like a CAN send command (ID:DATA format)
+        if ":" in value and not value.startswith(("test", "status", "reset", "help")):
+            parts = value.split(":")
+            if len(parts) >= 2:
+                # Treat as implied send command: ID:DATA
+                id_part = parts[0]
+                data_part = parts[1] if len(parts) > 1 else ""
+                
+                # Validate ID part
+                if not id_part:
+                    return ValidationResult.failure("CAN ID required (Format: ID:DATA, e.g., 123:DEADBEEF)")
+                
+                try:
+                    # Support both hex (0x123, 123) and decimal
+                    if id_part.startswith("0x"):
+                        can_id = int(id_part, 16)
+                    else:
+                        can_id = int(id_part, 16)  # Assume hex if no 0x prefix
+                    
+                    if can_id < 0 or can_id > 0x7FF:  # Standard CAN ID range
+                        return ValidationResult.failure("CAN ID must be 0-0x7FF (11-bit)")
+                except ValueError:
+                    return ValidationResult.failure("Invalid CAN ID format")
+                
+                # Validate data part
+                if data_part:
+                    # Check if it's valid hex
+                    if not re.match(r'^[0-9A-Fa-f,]*$', data_part):
+                        return ValidationResult.failure("Data must be hexadecimal (or comma-separated)")
+                    
+                    # Remove commas for length check
+                    clean_data = data_part.replace(",", "")
+                    if len(clean_data) % 2 != 0:
+                        return ValidationResult.failure("Data must have even number of hex digits")
+                    
+                    if len(clean_data) > 16:  # 8 bytes max
+                        return ValidationResult.failure("Data maximum 8 bytes (16 hex digits)")
+            else:
+                return ValidationResult.failure("Format: ID:DATA (e.g., 123:DEADBEEF)")
+        
+        # Check for explicit send command format: send:ID:DATA
+        elif value.startswith("send:"):
             parts = value.split(":")
             if len(parts) < 3:
                 return ValidationResult.failure("Format: send:ID:DATA (e.g., send:123:DEADBEEF)")
@@ -40,18 +80,19 @@ class CANCommandValidator(Validator):
             data_part = parts[2]
             if data_part:
                 # Check if it's valid hex
-                if not re.match(r'^[0-9A-Fa-f]*$', data_part):
-                    return ValidationResult.failure("Data must be hexadecimal")
+                if not re.match(r'^[0-9A-Fa-f,]*$', data_part):
+                    return ValidationResult.failure("Data must be hexadecimal (or comma-separated)")
                 
-                if len(data_part) % 2 != 0:
+                clean_data = data_part.replace(",", "")
+                if len(clean_data) % 2 != 0:
                     return ValidationResult.failure("Data must have even number of hex digits")
                 
-                if len(data_part) > 16:  # 8 bytes max
+                if len(clean_data) > 16:  # 8 bytes max
                     return ValidationResult.failure("Data maximum 8 bytes (16 hex digits)")
         
         elif value not in ["test", "status", "reset", "help"]:
             # Unknown command
-            return ValidationResult.failure("Unknown command. Use: send:ID:DATA, test, status, reset, help")
+            return ValidationResult.failure("Unknown command. Use: ID:DATA, test, status, reset, help")
         
         return ValidationResult.success()
 
@@ -61,7 +102,7 @@ class CommandInputWidget(Input):
     
     def __init__(self, **kwargs):
         super().__init__(
-            placeholder="Enter command (e.g., send:123:DEADBEEF)",
+            placeholder="Enter CAN message (e.g., 123:DEADBEEF) or command (test, status, help)",
             validators=[CANCommandValidator()],
             **kwargs
         )
@@ -70,11 +111,12 @@ class CommandInputWidget(Input):
         self.history_index = -1
         self.command_callback: Optional[Callable[[str], None]] = None
         
-        # Autocomplete suggestions
+        # Autocomplete suggestions - now with implied send format
         self.suggestions = [
-            "send:123:DEADBEEF",
-            "send:456:01020304",
-            "send:789:CAFEBABE",
+            "123:DEADBEEF",
+            "456:01020304", 
+            "500:AA01020304050607",
+            "600:AA01000050000050",
             "test",
             "status",
             "reset",
@@ -90,7 +132,10 @@ class CommandInputWidget(Input):
         command = event.value.strip()
         
         if command:
-            # Add to history
+            # Convert implied CAN commands to explicit send format
+            formatted_command = self._format_command(command)
+            
+            # Add original command to history (what user typed)
             if command not in self.command_history:
                 self.command_history.append(command)
             
@@ -101,17 +146,30 @@ class CommandInputWidget(Input):
             # Reset history index
             self.history_index = -1
             
-            # Execute command
+            # Execute formatted command
             if self.command_callback:
                 # Check if callback is async
                 import asyncio
                 if asyncio.iscoroutinefunction(self.command_callback):
-                    await self.command_callback(command)
+                    await self.command_callback(formatted_command)
                 else:
-                    self.command_callback(command)
+                    self.command_callback(formatted_command)
             
             # Clear input
             self.value = ""
+    
+    def _format_command(self, command: str) -> str:
+        """Format command, adding 'send:' prefix if needed."""
+        command = command.strip()
+        
+        # If it looks like a CAN command (ID:DATA) and doesn't start with system commands
+        if (":" in command and 
+            not command.startswith(("send:", "test", "status", "reset", "help"))):
+            # Add send: prefix
+            return f"send:{command}"
+        
+        # Return as-is for explicit send commands and system commands
+        return command
     
     def key_up(self) -> None:
         """Navigate up in command history."""
@@ -180,8 +238,10 @@ class CommandInputWidget(Input):
         """Get help text for commands."""
         return """Available Commands:
         
-🔧 CAN Commands:
-  send:ID:DATA    Send CAN message (e.g., send:123:DEADBEEF)
+🔧 CAN Messages (send: prefix is optional):
+  123:DEADBEEF    Send CAN message (ID 0x123 with data DEADBEEF)
+  500:AA,01,02    Send with comma-separated data
+  send:456:01     Explicit send format also supported
   
 🛠️ System Commands:
   test           Send test command to device
@@ -189,10 +249,11 @@ class CommandInputWidget(Input):
   reset          Reset device connection
   help           Show this help
   
-📝 Command Format:
-  - CAN ID: Hexadecimal (123, 0x123)
-  - Data: Hexadecimal pairs (DEADBEEF = 4 bytes)
+📝 Message Format:
+  - CAN ID: Hexadecimal (123, 0x123, or 500)
+  - Data: Hex pairs (DEADBEEF) or comma-separated (AA,01,02,03)
   - Max 8 bytes of data per message
+  - Examples: 123:DEADBEEF, 500:AA01020304050607
   
 ⌨️ Shortcuts:
   - ↑↓: Navigate command history
