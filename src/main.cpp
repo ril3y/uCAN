@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "hal/can_factory.h"
 #include "hal/platform_config.h"
+#include "capabilities/board_capabilities.h"
 
 // Global CAN interface instance
 CANInterface* can_interface = nullptr;
@@ -281,6 +282,18 @@ void handle_get_command(const char* param) {
     bool enabled = can_interface->is_visual_feedback_enabled();
     const char* status = enabled ? "enabled" : "disabled";
     send_status("INFO", "Visual feedback", status);
+
+  } else if (strcmp(param, "capabilities") == 0) {
+    // Send platform capabilities as JSON
+    send_capabilities_json();
+
+  } else if (strcmp(param, "pins") == 0) {
+    // Send available pin information
+    send_pin_info();
+
+  } else if (strcmp(param, "actions") == 0) {
+    // Send supported action types
+    send_supported_actions();
   }
 }
 
