@@ -13,6 +13,14 @@ static uint8_t command_index = 0;
 static unsigned long last_stats_time = 0;
 static const unsigned long STATS_INTERVAL = 5000;  // 5 seconds
 
+// Heartbeat functionality
+#ifdef ENABLE_HEARTBEAT
+static unsigned long last_heartbeat_time = 0;
+static const unsigned long HEARTBEAT_INTERVAL = 1000;  // 1 second
+static uint32_t heartbeat_counter = 0;
+void send_heartbeat();
+#endif
+
 // Forward declarations
 void process_serial_input();
 void handle_command(const char* command);
@@ -78,6 +86,14 @@ void loop() {
     send_stats();
     last_stats_time = millis();
   }
+
+  // Send periodic heartbeat (if enabled)
+#ifdef ENABLE_HEARTBEAT
+  if (millis() - last_heartbeat_time >= HEARTBEAT_INTERVAL) {
+    send_heartbeat();
+    last_heartbeat_time = millis();
+  }
+#endif
   
   // Check for CAN errors
   CANError error = can_interface->get_error_status();
@@ -308,7 +324,7 @@ void send_error(CANError error, const char* description) {
 void send_stats() {
   CANStatistics stats;
   can_interface->get_statistics(stats);
-  
+
   Serial.print("STATS;");
   Serial.print(stats.rx_count);
   Serial.print(";");
@@ -320,3 +336,49 @@ void send_stats() {
   Serial.print(";");
   Serial.println(millis());
 }
+
+#ifdef ENABLE_HEARTBEAT
+void send_heartbeat() {
+  if (!can_interface || !can_interface->is_ready()) {
+    return;
+  }
+
+  // Create heartbeat CAN message (ID 0x100)
+  CANMessage message;
+  message.id = 0x100;
+  message.extended = false;
+  message.remote = false;
+  message.length = 8;
+  message.timestamp = millis();
+
+  // Pack heartbeat counter (4 bytes) and uptime (4 bytes)
+  message.data[0] = (heartbeat_counter >> 24) & 0xFF;
+  message.data[1] = (heartbeat_counter >> 16) & 0xFF;
+  message.data[2] = (heartbeat_counter >> 8) & 0xFF;
+  message.data[3] = heartbeat_counter & 0xFF;
+
+  uint32_t uptime_sec = millis() / 1000;
+  message.data[4] = (uptime_sec >> 24) & 0xFF;
+  message.data[5] = (uptime_sec >> 16) & 0xFF;
+  message.data[6] = (uptime_sec >> 8) & 0xFF;
+  message.data[7] = uptime_sec & 0xFF;
+
+  if (can_interface->send_message(message)) {
+    heartbeat_counter++;
+
+    // Echo to serial
+    Serial.print("CAN_TX;0x");
+    Serial.print(message.id, HEX);
+    Serial.print(";");
+
+    for (uint8_t i = 0; i < message.length; i++) {
+      if (i > 0) Serial.print(",");
+      if (message.data[i] < 0x10) Serial.print("0");
+      Serial.print(message.data[i], HEX);
+    }
+
+    Serial.print(";");
+    Serial.println(message.timestamp);
+  }
+}
+#endif

@@ -24,6 +24,45 @@ The system consists of two main components:
 - **Unified Protocol**: Implements full PROTOCOL.md specification
 - **Multi-Environment Build**: PlatformIO configuration for all supported boards
 
+### Key Architecture Patterns
+
+**Factory Pattern (Firmware)**
+- `CANFactory::create()` in `src/hal/can_factory.h` instantiates the correct platform-specific CAN implementation
+- Compile-time platform detection via `platform_config.h` selects RP2040CAN, SAMD51CAN, etc.
+- All implementations inherit from abstract `CANInterface` base class
+
+**Registry Pattern (TUI)**
+- `ModernViewRegistry` routes CAN messages to appropriate custom views based on CAN ID
+- `ParserRegistry` manages message parsers with priority-based selection
+- Both use priority systems to handle overlapping CAN ID ranges
+
+**Auto-Discovery Pattern (TUI)**
+- Views in `can_tui/views/view_*.py` are automatically discovered at startup
+- No manual registration needed - just create file following naming convention
+- Each view declares supported CAN IDs via `get_supported_can_ids()`
+
+### Message Flow Architecture
+
+**Firmware → TUI Flow:**
+1. `CANInterface` receives message from hardware CAN controller
+2. Firmware formats as protocol message (e.g., `CAN_RX;0x123;01,02,03,04`)
+3. Sent over USB serial to TUI
+
+**TUI Message Processing Flow:**
+1. `SerialService` receives raw serial line
+2. Protocol parser converts to `CANMessage` object
+3. `ModernViewRegistry` checks if any view handles this CAN ID (by priority)
+4. If view found: View's `parse_message()` called → widget updated
+5. If no view: `ParserRegistry` finds best parser (by confidence) → log updated
+6. `MessageLogWidget` always receives message for display
+
+**TUI → Firmware Flow:**
+1. User types command in `CommandInputWidget` (e.g., `send:0x123:01,02,03`)
+2. Command validated and sent to `SerialService`
+3. Firmware receives command via serial
+4. Firmware parses and executes (e.g., calls `send_message()` on `CANInterface`)
+5. Firmware sends `CAN_TX` confirmation back to TUI
+
 ### TUI Application (can_tui/*)
 - **Standalone Python Package**: Independent of hardware implementation built with Textual framework
 - **Universal Protocol Support**: Works with any board implementing the protocol
@@ -37,12 +76,21 @@ The system consists of two main components:
 ## Essential Commands
 
 ### Multi-Platform Firmware Development
+
+**Note**: Use WSL on Windows for best compatibility with Linux toolchains.
+
 ```bash
 # Build for Raspberry Pi Pico (default)
 pio run -e pico
 
 # Build for Adafruit Feather M4 CAN
 pio run -e feather_m4_can
+
+# Build variants for Feather M4 CAN
+pio run -e feather_m4_can_debug        # Debug build with verbose output
+pio run -e feather_m4_can_250k         # 250kbps CAN bitrate
+pio run -e feather_m4_can_1m           # 1Mbps CAN bitrate
+pio run -e feather_m4_can_no_neopixel  # Disable NeoPixel for power savings
 
 # Build for ESP32 (future)
 pio run -e esp32
@@ -57,6 +105,20 @@ pio device monitor -b 115200
 # Clean all environments
 pio run --target clean
 ```
+
+### VSCode Integration
+
+VSCode tasks are configured in `.vscode/tasks.json`. Access via `Terminal > Run Task...`:
+
+- **Build: Pico** - Build firmware for Raspberry Pi Pico
+- **Build: Feather M4 CAN** - Build standard Feather M4 CAN firmware
+- **Build: Feather M4 CAN Debug** - Build with debug symbols and verbose output
+- **Build: Feather M4 CAN 250kbps/1Mbps** - Build with different CAN speeds
+- **Upload: Pico/Feather M4 CAN** - Upload firmware to board
+- **Monitor: Serial** - Monitor serial output
+- **Run: TUI** - Launch the Python TUI application
+- **Test: Python** - Run Python test suite
+- **Clean: All** - Clean all build artifacts
 
 ### TUI Development
 ```bash
@@ -93,9 +155,27 @@ isort can_tui/ tests/
 
 ### Current Platform Status
 - **RP2040**: ✅ Implemented using direct can2040 integration (bypasses ACAN2040 issues)
-- **SAMD51**: ✅ Implemented using Adafruit CAN library
+- **SAMD51**: ✅ Implemented using Adafruit CAN library with multiple build variants
 - **ESP32**: 🚧 Platform configuration ready, implementation needed
 - **STM32**: 🚧 Platform configuration ready, implementation needed
+
+### Adafruit Feather M4 CAN Build Variants
+
+The Feather M4 CAN has several pre-configured build environments:
+
+| Environment | CAN Bitrate | Features | Use Case |
+|------------|-------------|----------|----------|
+| `feather_m4_can` | 500kbps | Standard build with NeoPixel | General purpose |
+| `feather_m4_can_debug` | 500kbps | Debug symbols, verbose output | Development/debugging |
+| `feather_m4_can_250k` | 250kbps | Standard build | Lower-speed CAN networks |
+| `feather_m4_can_1m` | 1Mbps | Standard build | High-speed CAN networks |
+| `feather_m4_can_no_neopixel` | 500kbps | NeoPixel disabled | Power-sensitive applications |
+
+**Build Defines Available:**
+- `DEFAULT_CAN_BITRATE` - Sets default CAN bus speed (125000, 250000, 500000, 1000000)
+- `DEBUG_SERIAL` - Enable verbose serial debug output
+- `DEBUG_CAN` - Enable CAN-specific debug messages
+- `DISABLE_NEOPIXEL` - Disable NeoPixel visual feedback for power savings
 
 ## Protocol Implementation
 
@@ -119,13 +199,20 @@ The firmware implements the full protocol specification from `can_tui/PROTOCOL.m
 - **Auto-Discovery**: Views placed in `can_tui/views/view_*.py` are automatically discovered and registered
 - **CAN ID Subscription**: Views declare supported CAN IDs via `get_supported_can_ids()`
 - **Message Routing**: `ModernViewRegistry` routes messages to views based on CAN ID and priority
-- **Widget Integration**: Each view associates with a Textual widget for UI rendering
+- **Widget Integration**: Each view associates with a Textual widget for UI rendering via `create_widget()`
+- **Self-Contained Parsing**: Views implement their own `parse_message()` method, making them independent of external parsers
 - **Example Implementation**: `HarnessSwitchView` subscribes to CAN ID 0x500 and displays switch states
+
+#### View vs Parser Distinction
+- **Views**: CAN ID-specific visualizations with integrated parsing logic (e.g., gauge, switch panel)
+- **Parsers**: General-purpose message interpreters registered in `parser_config.yaml`
+- Views take priority over parsers for their declared CAN IDs
+- Views are self-contained: parsing + visualization in one module
 
 #### Creating Custom Views
 1. Create `view_yourname.py` in `can_tui/views/` inheriting from `BaseView`
-2. Implement required methods: `get_view_name()`, `get_supported_can_ids()`, `get_widget_class()`, etc.
-3. Create corresponding widget in `can_tui/widgets/` using Textual components
+2. Implement required methods: `get_view_name()`, `get_supported_can_ids()`, `create_widget()`, `parse_message()`
+3. Create corresponding widget in `can_tui/widgets/` using Textual components (or compose inline)
 4. View is automatically discovered and available in TUI settings
 
 ### Protocol Extensions
