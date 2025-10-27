@@ -22,14 +22,16 @@ import time
 class TestGPIOActions:
     """Test suite for GPIO action execution."""
 
-    def test_gpio_set_with_fixed_parameter(self, send_command, wait_for_response):
+    def test_gpio_set_with_fixed_parameter(self, send_command, wait_for_response, read_responses):
         """Test GPIO_SET action with fixed pin parameter."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Add GPIO_SET rule with fixed pin
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13")
+        time.sleep(0.3)
 
         response = wait_for_response("STATUS;INFO;", timeout=1.0)
         assert response is not None, "No response for action:add"

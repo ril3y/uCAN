@@ -102,7 +102,7 @@ class TestErrorHandling:
 
         # Valid command should work
         send_command("send:0x123:01,02,03")
-        time.sleep(0.5)
+        time.sleep(0.7)
 
         responses2 = read_responses(max_lines=5, line_timeout=0.5)
         can_tx_responses = [r for r in responses2 if r.startswith("CAN_TX;")]
@@ -121,7 +121,7 @@ class TestErrorHandling:
 
         # Valid command should work
         send_command("send:0x100:AA,BB,CC")
-        time.sleep(0.5)
+        time.sleep(0.7)
 
         responses2 = read_responses(max_lines=5, line_timeout=0.5)
         can_tx_responses = [r for r in responses2 if r.startswith("CAN_TX;")]
@@ -175,7 +175,7 @@ class TestErrorHandling:
 
         # Valid 8-byte send should work
         send_command("send:0x100:01,02,03,04,05,06,07,08")
-        time.sleep(0.5)
+        time.sleep(0.7)
 
         responses2 = read_responses(max_lines=5, line_timeout=0.5)
         can_tx_responses = [r for r in responses2 if r.startswith("CAN_TX;")]
@@ -202,7 +202,7 @@ class TestErrorHandling:
 
         # Valid format should work
         send_command("send:0x100:01,02,03")
-        time.sleep(0.5)
+        time.sleep(0.7)
 
         responses2 = read_responses(max_lines=5, line_timeout=0.5)
         can_tx_responses = [r for r in responses2 if r.startswith("CAN_TX;")]

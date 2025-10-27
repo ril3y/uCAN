@@ -344,7 +344,7 @@ class TestBasicCommands:
 
         # Lowercase get:version should work
         send_command("get:version")
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         responses2 = read_responses(max_lines=5, line_timeout=0.5)
         status_responses = [r for r in responses2 if r.startswith("STATUS;")]

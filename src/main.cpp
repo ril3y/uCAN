@@ -217,55 +217,99 @@ void handle_command(const char* command) {
     handle_action_command(command + 7);
   } else if (strncmp(command, "custom:", 7) == 0) {
     handle_custom_command(command + 7);
+  } else {
+    // Return error for unknown commands per protocol spec
+    char error_msg[128];
+    snprintf(error_msg, sizeof(error_msg), "Unknown command: %.60s", command);
+    Serial.print("STATUS;ERROR;COMMAND;");
+    Serial.println(error_msg);
   }
-  // Silently ignore unknown commands for protocol compatibility
 }
 
 void handle_send_command(const char* params) {
   // Parse format: ID:DATA
   char* colon_pos = strchr(params, ':');
   if (!colon_pos) {
+    Serial.println("STATUS;ERROR;PARAM;Missing CAN ID in send command");
     return;
   }
-  
+
   *colon_pos = '\0';
   const char* id_str = params;
   const char* data_str = colon_pos + 1;
-  
-  // Parse CAN ID
-  uint32_t can_id = strtoul(id_str, NULL, 16);
-  
+
+  // Validate CAN ID is not empty
+  if (strlen(id_str) == 0) {
+    Serial.println("STATUS;ERROR;PARAM;Missing CAN ID in send command");
+    return;
+  }
+
+  // Parse CAN ID and validate hex format
+  char* endptr;
+  uint32_t can_id = strtoul(id_str, &endptr, 16);
+
+  // Check if parsing failed (no valid hex digits)
+  if (endptr == id_str) {
+    Serial.print("STATUS;ERROR;PARAM;Invalid CAN ID format: ");
+    Serial.println(id_str);
+    return;
+  }
+
   CANMessage message;
   message.id = can_id;
   message.extended = (can_id > 0x7FF);
   message.remote = false;
   message.length = 0;
   message.timestamp = millis();
-  
+
   // Parse data bytes (comma-separated hex)
   char data_copy[strlen(data_str) + 1];
   strcpy(data_copy, data_str);
-  
+
   char* token = strtok(data_copy, ",");
-  while (token != NULL && message.length < CAN_MAX_DATA_LENGTH) {
-    message.data[message.length] = strtoul(token, NULL, 16);
+  while (token != NULL) {
+    // Check if we're exceeding max data length
+    if (message.length >= CAN_MAX_DATA_LENGTH) {
+      Serial.println("STATUS;ERROR;PARAM;Too many data bytes (max 8)");
+      return;
+    }
+
+    // Validate hex format for data byte
+    char* data_endptr;
+    unsigned long byte_val = strtoul(token, &data_endptr, 16);
+
+    // Check if parsing failed or invalid hex
+    if (data_endptr == token || *data_endptr != '\0') {
+      Serial.print("STATUS;ERROR;PARAM;Invalid hex data: ");
+      Serial.println(token);
+      return;
+    }
+
+    // Check if byte value is out of range
+    if (byte_val > 0xFF) {
+      Serial.print("STATUS;ERROR;PARAM;Data byte out of range (0-FF): ");
+      Serial.println(token);
+      return;
+    }
+
+    message.data[message.length] = (uint8_t)byte_val;
     message.length++;
     token = strtok(NULL, ",");
   }
-  
+
   // Send message
   if (can_interface->send_message(message)) {
     // Echo back as CAN_TX
     Serial.print("CAN_TX;0x");
     Serial.print(message.id, HEX);
     Serial.print(";");
-    
+
     for (uint8_t i = 0; i < message.length; i++) {
       if (i > 0) Serial.print(",");
       if (message.data[i] < 0x10) Serial.print("0");
       Serial.print(message.data[i], HEX);
     }
-    
+
     Serial.print(";");
     Serial.println(message.timestamp);
   } else {

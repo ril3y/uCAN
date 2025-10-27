@@ -58,10 +58,12 @@ class TestRuleManagement:
         """Test action:add creates rule with fixed parameters."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Add rule with fixed parameter
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13")
+        time.sleep(0.3)
 
         response = wait_for_response("STATUS;INFO;", timeout=1.0)
         assert response is not None, "No response received for action:add"
@@ -97,10 +99,12 @@ class TestRuleManagement:
         """Test action:add creates rule with candata parameter extraction."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Add rule with candata extraction
         send_command("action:add:0:0x500:0xFFFFFFFF:::0:NEOPIXEL:candata")
+        time.sleep(0.3)
 
         response = wait_for_response("STATUS;INFO;", timeout=1.0)
         assert response is not None, "No response received for action:add"
@@ -219,17 +223,20 @@ class TestRuleManagement:
         """Test action:remove deletes a specific rule by ID."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Add two rules
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume add response
         send_command("action:add:0:0x200:0xFFFFFFFF:::0:GPIO_TOGGLE:fixed:14")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume add response
 
         # Get rule IDs
         send_command("action:list")
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         responses = read_responses(max_lines=20, line_timeout=0.5)
         rule_responses = [r for r in responses if r.startswith("RULE;")]
@@ -270,11 +277,12 @@ class TestRuleManagement:
         """Test action:remove fails gracefully for non-existent rule ID."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Try to remove a rule that doesn't exist
         send_command("action:remove:99")
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         responses = read_responses(max_lines=10, line_timeout=0.5)
 
@@ -294,11 +302,13 @@ class TestRuleManagement:
         """Test action:edit updates an existing rule's parameters."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Add initial rule
         send_command("action:add:1:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume add response
 
         # Verify initial rule
         send_command("action:list")
@@ -394,7 +404,7 @@ class TestRuleManagement:
         assert len(rule_responses) == 1, "Expected 1 rule after edit"
 
         updated_rule = rule_responses[0]
-        assert "0x200" in updated_rule.upper(), \
+        assert "0x200" in updated_rule or "0X200" in updated_rule, \
             f"Rule should have CAN ID 0x200, got: {updated_rule}"
 
         # Cleanup
@@ -405,13 +415,14 @@ class TestRuleManagement:
         """Test that PARAM_SOURCE field is required in action:add (breaking change from v1.x)."""
         # Clear rules first
         send_command("action:clear")
-        time.sleep(0.2)
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume clear response
 
         # Try to add rule WITHOUT param_source (should fail)
         # Old v1.x format: action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:13
         # New v2.0 format: action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:13")
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         responses = read_responses(max_lines=10, line_timeout=0.5)
 

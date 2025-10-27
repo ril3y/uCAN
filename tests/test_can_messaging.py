@@ -167,22 +167,22 @@ class TestCANMessaging:
         timestamp_ms = int(parts[3])
         assert timestamp_ms >= 0, f"Timestamp should be non-negative, got: {timestamp_ms}"
 
-    def test_can_tx_includes_timestamp(self, send_command, wait_for_response):
+    def test_can_tx_includes_timestamp(self, send_command, wait_for_response, read_responses):
         """Test that CAN_TX messages include monotonically increasing timestamps."""
         # Send first message
         send_command("send:0x600:01")
-        time.sleep(0.2)  # Give firmware time to send in loopback
+        time.sleep(0.3)  # Give firmware time to send in loopback
         response1 = wait_for_response("CAN_TX;", timeout=2.0)
 
         assert response1 is not None, "No CAN_TX response for first message"
         timestamp1 = int(response1.split(';')[3])
 
         # Wait a bit
-        time.sleep(0.2)
+        time.sleep(0.3)
 
         # Send second message
         send_command("send:0x600:02")
-        time.sleep(0.2)  # Give firmware time to send in loopback
+        time.sleep(0.5)  # Give firmware time to send in loopback
         response2 = wait_for_response("CAN_TX;", timeout=2.0)
 
         assert response2 is not None, "No CAN_TX response for second message"
@@ -192,44 +192,44 @@ class TestCANMessaging:
         assert timestamp2 > timestamp1, \
             f"Timestamps should be monotonically increasing: {timestamp1} -> {timestamp2}"
 
-    def test_send_with_hex_data_various_cases(self, send_command, wait_for_response):
+    def test_send_with_hex_data_various_cases(self, send_command, wait_for_response, read_responses):
         """Test send command accepts hex data in various formats."""
         # Lowercase hex
         send_command("send:0x700:aa,bb,cc")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response = wait_for_response("CAN_TX;", timeout=2.0)
         assert response is not None, "Should accept lowercase hex data"
 
         # Uppercase hex
         send_command("send:0x700:DD,EE,FF")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response = wait_for_response("CAN_TX;", timeout=2.0)
         assert response is not None, "Should accept uppercase hex data"
 
         # Mixed case hex
         send_command("send:0x700:aA,Bb,Cc")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response = wait_for_response("CAN_TX;", timeout=2.0)
         assert response is not None, "Should accept mixed case hex data"
 
-    def test_send_with_various_can_ids(self, send_command, wait_for_response):
+    def test_send_with_various_can_ids(self, send_command, wait_for_response, read_responses):
         """Test send command with various valid CAN IDs."""
         # Minimum standard CAN ID
         send_command("send:0x000:01")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response = wait_for_response("CAN_TX;", timeout=2.0)
         assert response is not None, "Should accept CAN ID 0x000"
 
         # Maximum standard CAN ID
         send_command("send:0x7FF:01")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response = wait_for_response("CAN_TX;", timeout=2.0)
         assert response is not None, "Should accept CAN ID 0x7FF"
 
         # Common IDs
         for can_id in ["0x100", "0x200", "0x500", "0x600"]:
             send_command(f"send:{can_id}:01")
-            time.sleep(0.2)
+            time.sleep(0.5)
             response = wait_for_response("CAN_TX;", timeout=2.0)
             assert response is not None, f"Should accept CAN ID {can_id}"
 
@@ -278,16 +278,16 @@ class TestCANMessaging:
         assert len(can_tx_responses) >= 3, \
             f"Expected at least 3 CAN_TX responses, got {len(can_tx_responses)}"
 
-    def test_can_id_format_consistency(self, send_command, wait_for_response):
+    def test_can_id_format_consistency(self, send_command, wait_for_response, read_responses):
         """Test that CAN IDs are returned in consistent format."""
         # Send with lowercase x
         send_command("send:0x123:01")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response1 = wait_for_response("CAN_TX;", timeout=2.0)
 
         # Send with uppercase X
         send_command("send:0X456:01")
-        time.sleep(0.2)
+        time.sleep(0.5)
         response2 = wait_for_response("CAN_TX;", timeout=2.0)
 
         assert response1 is not None and response2 is not None, \

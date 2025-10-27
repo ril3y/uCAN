@@ -185,6 +185,9 @@ uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
     rule.id = atoi(tokens[0]);
     rule.enabled = true;
 
+    // Initialize data mask to all zeros (match nothing by default, unless specified)
+    memset(rule.data_mask, 0, sizeof(rule.data_mask));
+
     // Parse CAN ID
     rule.can_id = strtoul(tokens[1], nullptr, 16);
 
@@ -195,10 +198,46 @@ uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
         rule.can_id_mask = 0x000;  // Match any
     }
 
-    // Parse data pattern (skip tokens[3])
-    // Parse data mask (skip tokens[4])
-    // Parse data length
-    rule.data_length = atoi(tokens[5]);
+    // Parse data pattern (tokens[3]) - comma-separated hex bytes
+    rule.data_length = 0;
+    if (strlen(tokens[3]) > 0) {
+        // Parse comma-separated hex bytes
+        char data_copy[64];
+        strncpy(data_copy, tokens[3], sizeof(data_copy) - 1);
+        data_copy[sizeof(data_copy) - 1] = '\0';
+
+        char* data_token = strtok(data_copy, ",");
+        while (data_token != nullptr && rule.data_length < 8) {
+            rule.data[rule.data_length] = strtoul(data_token, nullptr, 16);
+            rule.data_length++;
+            data_token = strtok(nullptr, ",");
+        }
+    }
+
+    // Parse data mask (tokens[4]) - comma-separated hex bytes
+    uint8_t mask_length = 0;
+    if (strlen(tokens[4]) > 0) {
+        // Parse comma-separated hex bytes
+        char mask_copy[64];
+        strncpy(mask_copy, tokens[4], sizeof(mask_copy) - 1);
+        mask_copy[sizeof(mask_copy) - 1] = '\0';
+
+        char* mask_token = strtok(mask_copy, ",");
+        while (mask_token != nullptr && mask_length < 8) {
+            rule.data_mask[mask_length] = strtoul(mask_token, nullptr, 16);
+            mask_length++;
+            mask_token = strtok(nullptr, ",");
+        }
+    }
+
+    // Parse data length requirement from tokens[5]
+    // If data pattern was provided, use that length as minimum
+    // Otherwise use the explicit length field (0 = any length)
+    uint8_t explicit_length = atoi(tokens[5]);
+    if (explicit_length > 0) {
+        rule.data_length = explicit_length;
+    }
+    // If data pattern was provided but explicit_length is 0, keep pattern length
 
     // Parse action type
     const char* action_type = tokens[6];
@@ -210,6 +249,7 @@ uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
     // Token 7 MUST be "candata" or "fixed"
     if (token_count < 8) {
         // Missing PARAM_SOURCE field - error
+        Serial.println("STATUS;ERROR;PARAM;Missing PARAM_SOURCE field (must be 'fixed' or 'candata')");
         return 0;
     }
 
@@ -219,6 +259,9 @@ uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
         rule.param_source = PARAM_FROM_RULE;
     } else {
         // Invalid PARAM_SOURCE value - error
+        Serial.print("STATUS;ERROR;PARAM;Invalid PARAM_SOURCE '");
+        Serial.print(tokens[7]);
+        Serial.println("' (must be 'fixed' or 'candata')");
         return 0;
     }
 

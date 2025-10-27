@@ -124,11 +124,11 @@ class TestDataMatching:
 
         # Add rule with data matching
         send_command("action:add:0:0x100:0xFFFFFFFF:FF,00:FF,FF:2:GPIO_TOGGLE:fixed:13")
-        time.sleep(0.3)
-        read_responses(max_lines=5, line_timeout=0.3)  # Consume add response
+        time.sleep(0.5)
+        read_responses(max_lines=5, line_timeout=0.5)  # Consume add response
 
         send_command("action:list")
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         responses = read_responses(max_lines=20, line_timeout=0.5)
         rule_responses = [r for r in responses if r.startswith("RULE;")]
