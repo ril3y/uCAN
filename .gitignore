@@ -32,3 +32,32 @@ test_*.py
 run_*.py
 monitor_debug.py
 cppcheck_report.txt
+
+# Test scripts (keep in separate test repo)
+test_*.py
+test_*.ps1
+test_*.sh
+*_rules.py
+simple_test.py
+
+# Temporary documentation
+PHASE*.md
+PROTOCOL_*_SUMMARY.md
+PROTOCOL_FIXES*.md
+*_ANALYSIS.md
+
+# IDE-specific
+.claude/
+.vscode/
+
+# Python artifacts
+*.egg-info/
+venv-wsl/
+__pycache__/
+*.pyc
+
+# Build artifacts
+cppcheck_report.txt
+build.log
+nul
+

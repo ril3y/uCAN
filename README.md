@@ -14,6 +14,9 @@ Multi-platform USB-to-CAN bridge system with hardware abstraction layer supporti
 - **Unified Protocol** - Text-based serial protocol (115200 baud default)
 - **Auto-Detection** - Compile-time platform detection
 - **PlatformIO Build System** - Multi-environment configuration
+- **Dynamic Capability Discovery** - Query board features at runtime
+- **Action System** - Rule-based hardware responses to CAN messages
+- **Periodic Transmission** - Configurable periodic CAN message sending
 
 ### Python TUI Application
 - **Real-time Monitoring** - Live CAN message display with color coding
@@ -100,9 +103,79 @@ python -m can_tui.main -p /dev/ttyACM0
 Type commands in the bottom input field:
 
 ```
+# Send a single CAN message
 send:0x123:01,02,03,04,05,06,07,08
+
+# Configure CAN bus
 config:speed:500000
 config:filter:0x100,0x200,0x300
+
+# Query capabilities
+get:capabilities
+get:actions
+get:pins
+
+# Manage action rules
+action:add:1:0x100:::::GPIO_TOGGLE:13
+action:list
+action:remove:1
+```
+
+## Action System
+
+UCAN includes a powerful rule-based action system that allows CAN messages to trigger hardware responses automatically, without host intervention.
+
+### Supported Actions
+
+| Action Type | Description | Platforms |
+|------------|-------------|-----------|
+| `GPIO_SET` | Set pin HIGH | All |
+| `GPIO_CLEAR` | Set pin LOW | All |
+| `GPIO_TOGGLE` | Toggle pin state | All |
+| `CAN_SEND` | Send CAN message once | All |
+| `CAN_SEND_PERIODIC` | Send CAN message at interval | All |
+| `PWM_SET` | Set PWM duty cycle | SAMD51, ESP32 |
+| `NEOPIXEL_COLOR` | Set NeoPixel RGB color | SAMD51 |
+| `ADC_READ_SEND` | Read ADC and send via CAN | All with ADC |
+
+### Example Usage
+
+```bash
+# Toggle GPIO pin 13 when receiving CAN ID 0x100
+action:add:1:0x100:::::GPIO_TOGGLE:13
+
+# Send periodic heartbeat every 1000ms
+action:add:2:0x000:::::CAN_SEND_PERIODIC:0x123:01,02,03,04:1000
+
+# Set NeoPixel to red on CAN ID 0x500
+action:add:3:0x500:::::NEOPIXEL_COLOR:255,0,0,128
+
+# List all active rules
+action:list
+
+# Disable a rule
+action:disable:1
+
+# Remove a rule
+action:remove:1
+```
+
+### Capability Discovery
+
+Query board capabilities to determine available actions:
+
+```bash
+# Get full JSON capabilities
+get:capabilities
+# Returns: CAPS;{"board":"Feather M4 CAN","chip":"ATSAME51",...}
+
+# Get supported actions
+get:actions
+# Returns: ACTIONS;GPIO_SET,GPIO_CLEAR,GPIO_TOGGLE,CAN_SEND,CAN_SEND_PERIODIC,PWM_SET,NEOPIXEL_COLOR,...
+
+# Get pin information
+get:pins
+# Returns: PINS;26;PWM:16;ADC:6;DAC:2;NEO:8
 ```
 
 ## Supported Hardware
@@ -124,6 +197,15 @@ uCAN/
 │   │   ├── can_factory.h     # Platform factory
 │   │   ├── rp2040_can.cpp    # RP2040 implementation
 │   │   └── samd51_can.cpp    # SAMD51 implementation
+│   ├── capabilities/         # Platform capability discovery
+│   │   ├── board_capabilities.h   # Capability definitions
+│   │   ├── capability_query.cpp   # JSON query responses
+│   │   ├── rp2040_capabilities.cpp
+│   │   └── samd51_capabilities.cpp
+│   ├── actions/              # Rule-based action system
+│   │   ├── action_types.h    # Action definitions
+│   │   ├── action_manager.h  # Action manager class
+│   │   └── action_manager.cpp
 │   └── main.cpp              # Main firmware entry point
 │
 ├── can_tui/                  # Python TUI application
@@ -135,6 +217,9 @@ uCAN/
 │   ├── parsers/              # Message parsers
 │   ├── services/             # Serial communication
 │   └── models/               # Data models
+│
+├── docs/                     # Documentation
+│   └── UCAN_WEB_API_GUIDE.md # Web developer integration guide
 │
 ├── platformio.ini            # PlatformIO build config
 ├── parser_config.yaml        # Parser configuration
@@ -153,17 +238,23 @@ CAN_RX;0x123;01,02,03,04,05,06,07,08
 CAN_TX;0x456;AA,BB,CC,DD
 CAN_ERR;BUS_OFF;CAN bus entered bus-off state
 STATUS;CONNECTED;uCAN v1.0 Ready
+CAPS;{"board":"Feather M4 CAN","chip":"ATSAME51",...}
+ACTIONS;GPIO_SET,GPIO_CLEAR,GPIO_TOGGLE,CAN_SEND,CAN_SEND_PERIODIC,...
 
 # TUI to Device
 send:0x123:01,02,03,04
 config:speed:500000
 get:status
+get:capabilities
+get:actions
+action:add:1:0x100:::::GPIO_TOGGLE:13
+action:list
 control:reset
 ```
 
 ## Development
 
-For detailed development information, see [DEVELOPER.md](DEVELOPER.md).
+For detailed development information, see [docs/DEVELOPER.md](docs/DEVELOPER.md).
 
 ### Quick Development Setup
 
@@ -233,7 +324,7 @@ See the [examples/](examples/) directory for:
 
 ## Contributing
 
-Contributions are welcome! Please see [DEVELOPER.md](DEVELOPER.md) for:
+Contributions are welcome! Please see [docs/DEVELOPER.md](docs/DEVELOPER.md) for:
 - Development environment setup
 - Architecture details
 - Coding standards
@@ -253,9 +344,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Links
 
-- **Documentation**: [DEVELOPER.md](DEVELOPER.md)
-- **Protocol**: [can_tui/PROTOCOL.md](can_tui/PROTOCOL.md)
+- **Documentation**: [docs/DEVELOPER.md](docs/DEVELOPER.md)
+- **Protocol v2.0**: [can_tui/PROTOCOL.md](can_tui/PROTOCOL.md)
+- **Protocol Summary**: [docs/PROTOCOL_V2_SUMMARY.md](docs/PROTOCOL_V2_SUMMARY.md)
+- **Web API Guide**: [docs/UCAN_WEB_API_GUIDE.md](docs/UCAN_WEB_API_GUIDE.md)
 - **TUI Guide**: [can_tui/README.md](can_tui/README.md)
+- **CAN FD Analysis**: [docs/CAN_FD_ANALYSIS.md](docs/CAN_FD_ANALYSIS.md)
 - **Issues**: [GitHub Issues](https://github.com/ril3y/uCAN/issues)
 
 ## Support
