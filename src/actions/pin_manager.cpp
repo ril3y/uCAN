@@ -4,7 +4,7 @@ PinManager::PinManager() {
     clear_all();
 }
 
-bool PinManager::allocate_pin(uint8_t pin, PinMode mode) {
+bool PinManager::allocate_pin(uint8_t pin, PinUsageMode mode) {
     // Validate pin number
     if (!is_valid_pin(pin)) {
         LOG_PIN_ERROR(pin, "Invalid pin number (out of range)");
@@ -12,7 +12,7 @@ bool PinManager::allocate_pin(uint8_t pin, PinMode mode) {
     }
 
     // Check if already allocated
-    PinMode current = usage_map_[pin];
+    PinUsageMode current = usage_map_[pin];
 
     if (current == PINMODE_RESERVED) {
         LOG_PIN_ERROR(pin, "Pin reserved by hardware (CAN, USB, etc)");
@@ -55,19 +55,19 @@ void PinManager::free_pin(uint8_t pin) {
     usage_map_[pin] = PINMODE_UNUSED;
 }
 
-PinMode PinManager::get_usage(uint8_t pin) const {
+PinUsageMode PinManager::get_usage(uint8_t pin) const {
     if (!is_valid_pin(pin)) {
         return PINMODE_UNUSED;
     }
     return usage_map_[pin];
 }
 
-bool PinManager::is_available(uint8_t pin, PinMode intended_mode) const {
+bool PinManager::is_available(uint8_t pin, PinUsageMode intended_mode) const {
     if (!is_valid_pin(pin)) {
         return false;
     }
 
-    PinMode current = usage_map_[pin];
+    PinUsageMode current = usage_map_[pin];
 
     // Reserved pins are never available
     if (current == PINMODE_RESERVED) {
@@ -90,7 +90,7 @@ bool PinManager::is_allocated(uint8_t pin) const {
     return usage_map_[pin] != PINMODE_UNUSED;
 }
 
-bool PinManager::are_modes_compatible(PinMode current, PinMode intended) const {
+bool PinManager::are_modes_compatible(PinUsageMode current, PinUsageMode intended) const {
     // Same mode is always compatible
     if (current == intended) {
         return true;
@@ -155,7 +155,7 @@ void PinManager::log_pin_status() const {
     Serial.println("============================");
 }
 
-const char* PinManager::mode_to_string(PinMode mode) {
+const char* PinManager::mode_to_string(PinUsageMode mode) {
     switch (mode) {
         case PINMODE_UNUSED:       return "Unused";
         case PINMODE_GPIO_INPUT:   return "GPIO Input";

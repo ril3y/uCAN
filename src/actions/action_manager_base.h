@@ -134,6 +134,16 @@ public:
      */
     CustomCommandRegistry& get_custom_commands() { return custom_commands_; }
 
+    /**
+     * Send CAN message (public for use by custom commands)
+     * Platform-agnostic helper that uses CANInterface
+     * @param can_id CAN message ID
+     * @param data Data bytes
+     * @param length Data length (0-8)
+     * @return true if message sent successfully
+     */
+    bool execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length);
+
 protected:
     // Platform-specific action execution (pure virtual methods)
 
@@ -185,9 +195,6 @@ protected:
     bool initialized_;
     uint8_t next_rule_id_;
     CustomCommandRegistry custom_commands_;
-
-    // CAN send is platform-agnostic (uses CANInterface)
-    bool execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length);
 
 private:
     /**

@@ -4,12 +4,15 @@
 #include "../utils/pin_error_logger.h"
 
 /**
- * Pin Modes
+ * Pin Usage Modes
  *
  * Defines the different ways a pin can be used.
  * Tracks pin allocation at runtime to prevent conflicts.
+ *
+ * Note: Named PinUsageMode instead of PinMode to avoid conflicts with
+ * Arduino core definitions (e.g., RP2040 defines PinMode in Arduino.h)
  */
-enum PinMode : uint8_t {
+enum PinUsageMode : uint8_t {
     PINMODE_UNUSED = 0,        // Pin not allocated
     PINMODE_GPIO_INPUT,        // Digital input
     PINMODE_GPIO_OUTPUT,       // Digital output
@@ -67,7 +70,7 @@ public:
      * @param mode Intended pin mode
      * @return true if allocated successfully, false if already in use or invalid
      */
-    bool allocate_pin(uint8_t pin, PinMode mode);
+    bool allocate_pin(uint8_t pin, PinUsageMode mode);
 
     /**
      * Free a previously allocated pin
@@ -82,7 +85,7 @@ public:
      * @param pin Pin number to query
      * @return Current PinMode (PIN_UNUSED if not allocated)
      */
-    PinMode get_usage(uint8_t pin) const;
+    PinUsageMode get_usage(uint8_t pin) const;
 
     /**
      * Check if pin is available for intended mode
@@ -92,7 +95,7 @@ public:
      * @param intended_mode Intended usage mode
      * @return true if pin can be allocated for this mode
      */
-    bool is_available(uint8_t pin, PinMode intended_mode) const;
+    bool is_available(uint8_t pin, PinUsageMode intended_mode) const;
 
     /**
      * Check if pin is currently allocated
@@ -110,7 +113,7 @@ public:
      * @param intended Intended pin mode
      * @return true if modes are compatible
      */
-    bool are_modes_compatible(PinMode current, PinMode intended) const;
+    bool are_modes_compatible(PinUsageMode current, PinUsageMode intended) const;
 
     /**
      * Clear all pin allocations
@@ -130,11 +133,11 @@ public:
      * @param mode Pin mode
      * @return String name of mode
      */
-    static const char* mode_to_string(PinMode mode);
+    static const char* mode_to_string(PinUsageMode mode);
 
 private:
     static constexpr uint8_t MAX_PINS = 32;  // Maximum pin count for SAMD51
-    PinMode usage_map_[MAX_PINS];            // Current usage for each pin
+    PinUsageMode usage_map_[MAX_PINS];       // Current usage for each pin
 
     /**
      * Validate pin number is within bounds

@@ -68,6 +68,7 @@ void send_capabilities_json() {
     if (platform_capabilities.has_capability(CAP_CRYPTO)) features.add("CRYPTO");
     if (platform_capabilities.has_capability(CAP_RTC)) features.add("RTC");
     if (platform_capabilities.has_capability(CAP_I2S)) features.add("I2S");
+    if (platform_capabilities.has_capability(CAP_I2C)) features.add("I2C");
 
     // Send formatted JSON response
     Serial.print("CAPS;");
@@ -141,6 +142,11 @@ void send_supported_actions() {
         if (platform_capabilities.has_capability(CAP_CAN_SEND)) {
             print_action("ADC_READ_SEND");
         }
+    }
+
+    if (platform_capabilities.has_capability(CAP_I2C)) {
+        print_action("I2C_WRITE");
+        print_action("I2C_READ_BUFFER");
     }
 
     Serial.println();

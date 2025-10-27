@@ -761,7 +761,7 @@ ACTIONDEF;{"i":7,"n":"NEOPIXEL",...}
 
 ### action:add - Add Action Rule
 
-Format: `action:add:{RULE_ID}:{CAN_ID}:{MASK}:{EXTENDED}:{PRIORITY}:{INDEX}:{ACTION_NAME}:{PARAM_SOURCE}:{PARAMS...}`
+Format: `action:add:{ID}:{CAN_ID}:{CAN_MASK}:{DATA}:{DATA_MASK}:{DATA_LEN}:{ACTION}:{PARAM_SOURCE}:{PARAMS...}`
 
 This is the **most complex command**. It creates a rule that triggers an action when conditions are met.
 
@@ -770,15 +770,40 @@ This is the **most complex command**. It creates a rule that triggers an action 
 | Position | Field | Description | Example |
 |----------|-------|-------------|---------|
 | 0 | Command | Always `action:add` | `action:add` |
-| 1 | RULE_ID | Rule ID (0 = auto-assign) | `0`, `1`, `2` |
+| 1 | ID | Rule ID (0 = auto-assign) | `0`, `1`, `2` |
 | 2 | CAN_ID | CAN ID to match (hex) | `0x500`, `0x100` |
-| 3 | MASK | CAN ID mask (hex, typically 0xFFFFFFFF for exact match) | `0xFFFFFFFF` |
-| 4 | EXTENDED | Extended CAN ID flag (empty = standard) | `` or `X` |
-| 5 | PRIORITY | Rule priority (empty = default) | `` or `1` |
-| 6 | INDEX | Rule index (empty = default) | `` or `0` |
-| 7 | ACTION_NAME | Name from ACTIONDEF | `GPIO_SET`, `NEOPIXEL` |
+| 3 | CAN_MASK | CAN ID mask (hex, 0x000 = match any) | `0xFFFFFFFF`, `0x000` |
+| 4 | DATA | CAN data pattern to match (hex, comma-separated) | `FF,00`, `` |
+| 5 | DATA_MASK | CAN data mask (hex, comma-separated) | `FF,FF`, `` |
+| 6 | DATA_LEN | Required CAN data length (0 = any length) | `0`, `4`, `8` |
+| 7 | ACTION | Action type name | `GPIO_SET`, `NEOPIXEL` |
 | 8 | PARAM_SOURCE | **REQUIRED:** `fixed` or `candata` | `fixed`, `candata` |
 | 9+ | PARAMS | Parameter values (only if PARAM_SOURCE = `fixed`) | `13`, `255,128,0,200` |
+
+**CAN Data Matching Fields (DATA, DATA_MASK, DATA_LEN):**
+
+These fields enable **conditional triggering** based on CAN message content, not just CAN ID.
+
+- **DATA**: Expected data pattern (hex bytes, comma-separated)
+- **DATA_MASK**: Mask for data comparison (FF = must match, 00 = don't care)
+- **DATA_LEN**: Required message length (0 = any length accepted)
+
+**Examples of Data Matching:**
+```
+DATA:      FF,00
+DATA_MASK: FF,FF
+Meaning: "Byte 0 must be 0xFF, Byte 1 must be 0x00"
+
+DATA:      80
+DATA_MASK: FF
+DATA_LEN:  4
+Meaning: "Byte 0 must be 0x80, message must be exactly 4 bytes long"
+
+DATA:
+DATA_MASK:
+DATA_LEN:  0
+Meaning: "Match any data (no content filtering)"
+```
 
 **PARAM_SOURCE Explained:**
 
@@ -793,33 +818,30 @@ This is the **most complex command**. It creates a rule that triggers an action 
 
 **Examples:**
 
-**Fixed Parameters:**
+**Simple Rule (No Data Filtering):**
 ```
 action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13
-                                              ^^^^^ ^^
-                                             source pin#
 ```
-
-**Meaning:** "When CAN ID 0x100 is received, set GPIO pin 13 HIGH"
+**Meaning:** "When CAN ID 0x100 is received (any data), set GPIO pin 13 HIGH"
 
 **CAN Data Extraction:**
 ```
 action:add:0:0x500:0xFFFFFFFF:::0:NEOPIXEL:candata
-                                            ^^^^^^^
-                                          Extract from CAN data bytes
 ```
-
 **Meaning:** "When CAN ID 0x500 is received, set NeoPixel using R=byte0, G=byte1, B=byte2, brightness=byte3"
 
 **Then send:** `send:0x500:FF,00,00,C8` → Red LED at 200 brightness
 
+**Conditional Rule (Data Pattern Match):**
+```
+action:add:0:0x100:0xFFFFFFFF:FF:FF:1:GPIO_SET:fixed:13
+```
+**Meaning:** "When CAN ID 0x100 is received AND byte 0 equals 0xFF, set GPIO pin 13 HIGH"
+
 **Multi-Parameter Fixed:**
 ```
 action:add:0:0x600:0xFFFFFFFF:::0:NEOPIXEL:fixed:255:128:0:200
-                                                   ^^^^^^^^^^^^^^
-                                                   R  G  B  bright
 ```
-
 **Meaning:** "When CAN ID 0x600 is received, set NeoPixel to orange (255,128,0) at 200 brightness"
 
 **Response:**
@@ -845,7 +867,7 @@ STATUS;INFO;Rule removed;ID: 1
 
 ### action:edit - Update Existing Rule
 
-Format: `action:edit:{RULE_ID}:{CAN_ID}:{MASK}:{EXTENDED}:{PRIORITY}:{INDEX}:{ACTION_NAME}:{PARAM_SOURCE}:{PARAMS...}`
+Format: `action:edit:{ID}:{CAN_ID}:{CAN_MASK}:{DATA}:{DATA_MASK}:{DATA_LEN}:{ACTION}:{PARAM_SOURCE}:{PARAMS...}`
 
 Updates an existing rule by removing it and adding a new one with the same ID. This preserves the rule ID while allowing parameter changes.
 
@@ -892,11 +914,36 @@ STATUS;ERROR;Failed to update rule   (if new rule parameters are invalid)
 
 Format: `action:list`
 
-**Response:**
+**Response Format:**
 ```
-RULE;1;0x500;0xFFFFFFFF;;0;;NEOPIXEL;candata
-RULE;2;0x100;0xFFFFFFFF;;0;;GPIO_SET;fixed;13
+RULE;{ID};{CAN_ID};{CAN_MASK};{DATA};{DATA_MASK};{DATA_LEN};{ACTION};{PARAM_SOURCE};{PARAMS...}
 ```
+
+**Field Descriptions:**
+
+| Field | Description |
+|-------|-------------|
+| ID | Rule ID number |
+| CAN_ID | CAN ID to match (hex with 0x prefix) |
+| CAN_MASK | CAN ID mask (hex with 0x prefix) |
+| DATA | CAN data pattern (hex, comma-separated, empty if no pattern) |
+| DATA_MASK | CAN data mask (hex, comma-separated, empty if no mask) |
+| DATA_LEN | Required data length (0 = any length) |
+| ACTION | Action type name |
+| PARAM_SOURCE | Parameter source: `fixed` or `candata` |
+| PARAMS | Parameter values (only present if PARAM_SOURCE = `fixed`) |
+
+**Examples:**
+```
+RULE;1;0x500;0xFFFFFFFF;;;0;NEOPIXEL;candata
+RULE;2;0x100;0xFFFFFFFF;;;0;GPIO_SET;fixed;13
+RULE;3;0x200;0xFFFFFFFF;FF;FF;1;GPIO_TOGGLE;fixed;14
+```
+
+**Explanation:**
+- Rule 1: CAN ID 0x500, NeoPixel with data extraction, no data filtering
+- Rule 2: CAN ID 0x100, GPIO pin 13, fixed parameter, no data filtering
+- Rule 3: CAN ID 0x200, GPIO pin 14, triggers only if byte 0 = 0xFF
 
 ### action:clear - Remove All Rules
 
