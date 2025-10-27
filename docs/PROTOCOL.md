@@ -5,11 +5,13 @@
 **Last Updated:** 2025-01-27
 **Firmware Compatibility:** v2.0+
 
-**Note:** This document reflects currently implemented firmware. See `docs/PHASE1_SUMMARY.md` for planned Phase 1 additions:
-- I2C actions (missing capability bug fix)
-- PWM_CONFIGURE (frequency control)
-- Data buffer system
-- Enhanced pin validation
+**Phase 1 Integrated (2025-01-27):**
+- ✅ I2C actions (I2C_WRITE, I2C_READ_BUFFER)
+- ✅ PWM_CONFIGURE (frequency/resolution control)
+- ✅ Data buffer system (8-byte multi-sensor buffer)
+- ✅ Enhanced GPIO/ADC read actions (GPIO_READ_BUFFER, ADC_READ_BUFFER)
+- ✅ Buffer management (BUFFER_SEND, BUFFER_CLEAR)
+- ✅ Enhanced pin validation with runtime allocation tracking
 
 ---
 
@@ -299,7 +301,7 @@ CAPS;{
 - `dac` (number): Digital-to-analog converter pins
 
 **Features Array:**
-Common features: `"neopixel"`, `"action_system"`, `"rules_engine"`, `"flash_storage"`, `"wifi"`, `"bluetooth"`
+Common features: `"neopixel"`, `"action_system"`, `"rules_engine"`, `"flash_storage"`, `"I2C"`, `"wifi"`, `"bluetooth"`
 
 ### PINS - Pin Capabilities
 
@@ -316,9 +318,9 @@ Format: `ACTIONS;{ACTION1},{ACTION2},{ACTION3},...`
 
 Comma-separated list of action names supported by this board.
 
-**Example:**
+**Example (Phase 1 firmware):**
 ```
-ACTIONS;GPIO_SET,GPIO_CLEAR,GPIO_TOGGLE,PWM_SET,NEOPIXEL,CAN_SEND,CAN_SEND_PERIODIC
+ACTIONS;GPIO_SET,GPIO_CLEAR,GPIO_TOGGLE,PWM_SET,NEOPIXEL,CAN_SEND,CAN_SEND_PERIODIC,PWM_CONFIGURE,I2C_WRITE,I2C_READ_BUFFER,GPIO_READ_BUFFER,ADC_READ_BUFFER,BUFFER_SEND,BUFFER_CLEAR
 ```
 
 ### ACTIONDEF - Action Definition (Detailed)
@@ -343,7 +345,9 @@ ACTIONDEF;{
       "o": 0,
       "l": 8,
       "r": "0-255",
-      "role": "action_param"
+      "role": "action_param",
+      "label": "GPIO Pin Number",
+      "hint": "Pin to control (e.g., 13 for onboard LED)"
     }
   ]
 }
@@ -400,6 +404,10 @@ Each parameter in the `p` array has these fields:
 | `l` | number | Bit length (1-8 bits) | `8` (full byte), `1` (single bit) |
 | `r` | string | Valid range (min-max) | `"0-255"`, `"0-65535"`, `"-128-127"` |
 | `role` | string | Parameter role (see role table below) | `"action_param"`, `"trigger_param"`, `"output_param"` |
+| `label` | string (optional) | Human-friendly parameter name for UI display | `"GPIO Pin Number"`, `"Red"`, `"PWM Duty Cycle"` |
+| `hint` | string (optional) | Help text/example for UI tooltips | `"Pin to control (e.g., 13)"`, `"0=off, 128=50%, 255=full"` |
+
+**Note:** The `label` and `hint` fields are optional (v2.0+). If not present, UIs should fall back to using the `n` field for display. These fields significantly improve user experience by providing context-specific guidance.
 
 #### Parameter Type Codes (`t` field)
 
@@ -564,6 +572,31 @@ Format: `NAME;{DEVICE_NAME}`
 ```
 NAME;uCAN_Feather_001
 ```
+
+### ACTION - Action Execution Report
+
+Format: `ACTION;{RULE_ID};{ACTION_TYPE};{TRIGGER_CAN_ID};{STATUS}`
+
+Sent automatically when a rule is triggered and its action executes.
+
+**Fields:**
+- `RULE_ID` (number): The ID of the rule that was triggered
+- `ACTION_TYPE` (string): Name of the action that executed (e.g., "GPIO_SET", "NEOPIXEL")
+- `TRIGGER_CAN_ID` (hex): The CAN message ID that triggered this rule
+- `STATUS` (string): Either "OK" (success) or "FAIL" (error)
+
+**Examples:**
+```
+ACTION;1;GPIO_SET;0x100;OK
+ACTION;5;NEOPIXEL;0x500;OK
+ACTION;3;PWM_SET;0x200;FAIL
+```
+
+**Use Cases:**
+- Debugging: See which rules are actually firing
+- UI feedback: Show real-time action execution
+- Error detection: Identify failing actions
+- Performance monitoring: Track action execution frequency
 
 ---
 
@@ -808,6 +841,53 @@ action:remove:1
 STATUS;INFO;Rule removed;ID: 1
 ```
 
+**Aliases:** `action:delete:{RULE_ID}` (same functionality)
+
+### action:edit - Update Existing Rule
+
+Format: `action:edit:{RULE_ID}:{CAN_ID}:{MASK}:{EXTENDED}:{PRIORITY}:{INDEX}:{ACTION_NAME}:{PARAM_SOURCE}:{PARAMS...}`
+
+Updates an existing rule by removing it and adding a new one with the same ID. This preserves the rule ID while allowing parameter changes.
+
+**Field Descriptions:** (Same as `action:add` - see above)
+
+**Examples:**
+
+**Update GPIO pin:**
+```
+action:edit:1:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:14
+```
+Changes rule 1 to control pin 14 instead of its previous pin.
+
+**Update NeoPixel color mode:**
+```
+action:edit:2:0x500:0xFFFFFFFF:::0:NEOPIXEL:fixed:255:0:0:200
+```
+Changes rule 2 from `candata` mode to fixed red color.
+
+**Update trigger CAN ID:**
+```
+action:edit:3:0x200:0xFFFFFFFF:::0:GPIO_TOGGLE:candata
+```
+Changes rule 3 to trigger on CAN ID 0x200 instead of previous ID.
+
+**Response:**
+```
+STATUS;INFO;Rule updated;ID: 1
+```
+
+**Error Cases:**
+```
+STATUS;ERROR;Rule not found          (if RULE_ID doesn't exist)
+STATUS;ERROR;Failed to update rule   (if new rule parameters are invalid)
+```
+
+**Important Notes:**
+- Rule ID must already exist (use `action:add` for new rules)
+- All rule parameters must be provided (same format as `action:add`)
+- Atomically removes old rule and adds new one
+- If update fails, the old rule is already removed
+
 ### action:list - List All Rules
 
 Format: `action:list`
@@ -951,6 +1031,577 @@ Byte 0: 0b10101010 = 0xAA
 
 ---
 
+## Phase 1 Action Reference
+
+This section documents the Phase 1 actions integrated in v2.0. These actions extend the original capabilities with I2C communication, advanced PWM control, and a data buffer system for multi-sensor applications.
+
+### Overview
+
+**Phase 1 introduces 7 new actions:**
+
+| Action | Category | Description | Use Case |
+|--------|----------|-------------|----------|
+| PWM_CONFIGURE | PWM | Configure PWM with frequency/resolution | Motor control, servo control |
+| I2C_WRITE | I2C | Write single byte to I2C device | Set sensor registers |
+| I2C_READ_BUFFER | I2C | Read multiple bytes into buffer | Read sensor data |
+| GPIO_READ_BUFFER | GPIO | Read digital pin state into buffer | Multi-switch status |
+| ADC_READ_BUFFER | Analog | Read analog value (16-bit) into buffer | Multi-sensor data collection |
+| BUFFER_SEND | Communication | Send buffer contents as CAN message | Transmit collected data |
+| BUFFER_CLEAR | Buffer | Clear data buffer manually | Reset between collection cycles |
+
+**Key Concepts:**
+
+1. **Data Buffer System**: 8-byte shared buffer for collecting data from multiple sensors before transmission
+2. **Slot-Based Addressing**: Buffer slots 0-7 for flexible data organization
+3. **Chained Actions**: Multiple read actions → BUFFER_SEND creates complex data collection workflows
+4. **I2C Integration**: Direct I2C communication for sensor interfacing
+5. **Enhanced PWM**: Full control over frequency (1Hz-100kHz) and resolution (8-16 bits)
+
+### PWM_CONFIGURE
+
+Configure PWM output with precise frequency and resolution control.
+
+**Action Definition:**
+```json
+{
+  "i": 8,
+  "n": "PWM_CONFIGURE",
+  "d": "Configure PWM with frequency and resolution",
+  "c": "PWM",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "pin",
+      "t": 0,
+      "b": 0,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "PWM Pin Number",
+      "hint": "Pin to configure for PWM output"
+    },
+    {
+      "n": "duty",
+      "t": 1,
+      "b": 1,
+      "r": "0-65535",
+      "role": "action_param",
+      "label": "Duty Cycle",
+      "hint": "16-bit duty cycle value (0=0%, 65535=100%)"
+    },
+    {
+      "n": "freq",
+      "t": 2,
+      "b": 3,
+      "r": "1-100000",
+      "role": "action_param",
+      "label": "Frequency (Hz)",
+      "hint": "PWM frequency in Hz (1-100000)"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `pin` (uint8, byte 0): PWM-capable pin number
+- `duty` (uint16, bytes 1-2): Duty cycle (0-65535, where 65535 = 100%)
+- `freq` (uint32, bytes 3-6): Frequency in Hz (1-100,000)
+
+**CAN Data Format:**
+```
+Byte:  0      1-2        3-6
+      [Pin] [Duty_LSB] [Freq_LSB]
+            [Duty_MSB] [Freq_MSB]
+```
+
+**Examples:**
+
+**Fixed 1kHz servo control:**
+```
+action:add:0:0x300:0xFFFFFFFF:::0:PWM_CONFIGURE:fixed:9:32768:1000
+                                                        ^  ^^^^^  ^^^^
+                                                       pin  50%   1kHz
+```
+
+**Dynamic motor control:**
+```
+action:add:0:0x300:0xFFFFFFFF:::0:PWM_CONFIGURE:candata
+
+# Send different speeds:
+send:0x300:09,00,40,E8,03,00,00   → Pin 9, 25% duty, 1000Hz
+send:0x300:09,00,80,88,13,00,00   → Pin 9, 50% duty, 5000Hz
+send:0x300:09,00,C0,40,1F,00,00   → Pin 9, 75% duty, 8000Hz
+```
+
+**Use Cases:**
+- Precise motor speed control
+- Servo positioning
+- LED dimming with specific frequencies
+- Audio tone generation
+
+### I2C_WRITE
+
+Write a single byte to an I2C device register.
+
+**Action Definition:**
+```json
+{
+  "i": 9,
+  "n": "I2C_WRITE",
+  "d": "Write byte to I2C device",
+  "c": "I2C",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "addr",
+      "t": 0,
+      "b": 0,
+      "r": "0-127",
+      "role": "action_param",
+      "label": "I2C Address",
+      "hint": "7-bit I2C device address"
+    },
+    {
+      "n": "reg",
+      "t": 0,
+      "b": 1,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "Register Address",
+      "hint": "Device register to write to"
+    },
+    {
+      "n": "value",
+      "t": 0,
+      "b": 2,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "Value",
+      "hint": "Byte value to write"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `addr` (uint8, byte 0): 7-bit I2C device address (0-127)
+- `reg` (uint8, byte 1): Register address within device
+- `value` (uint8, byte 2): Byte value to write
+
+**CAN Data Format:**
+```
+Byte:  0      1      2
+      [Addr] [Reg] [Value]
+```
+
+**Examples:**
+
+**Configure sensor (fixed):**
+```
+action:add:0:0x400:0xFFFFFFFF:::0:I2C_WRITE:fixed:0x68:0x6B:0x00
+                                                    ^^^^  ^^^^  ^^^^
+                                                    addr  reg   value
+```
+Writes 0x00 to register 0x6B of I2C device at address 0x68 (typical MPU6050 initialization).
+
+**Dynamic sensor control:**
+```
+action:add:0:0x400:0xFFFFFFFF:::0:I2C_WRITE:candata
+
+# Control different registers dynamically:
+send:0x400:68,6B,00   → MPU6050: Wake up (PWR_MGMT_1 = 0)
+send:0x400:68,1C,10   → MPU6050: Set accel range (ACCEL_CONFIG = ±8g)
+send:0x400:3C,00,FF   → Different device at 0x3C
+```
+
+**Use Cases:**
+- Sensor initialization and configuration
+- Setting device operating modes
+- Writing calibration values
+- Controlling I2C peripherals (displays, motor drivers)
+
+### I2C_READ_BUFFER
+
+Read multiple bytes from I2C device into the data buffer.
+
+**Action Definition:**
+```json
+{
+  "i": 10,
+  "n": "I2C_READ_BUFFER",
+  "d": "Read I2C data into buffer",
+  "c": "I2C",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "addr",
+      "t": 0,
+      "b": 0,
+      "r": "0-127",
+      "role": "action_param",
+      "label": "I2C Address",
+      "hint": "7-bit I2C device address"
+    },
+    {
+      "n": "reg",
+      "t": 0,
+      "b": 1,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "Register Address",
+      "hint": "Starting register to read from"
+    },
+    {
+      "n": "len",
+      "t": 0,
+      "b": 2,
+      "r": "1-8",
+      "role": "action_param",
+      "label": "Length",
+      "hint": "Number of bytes to read (1-8)"
+    },
+    {
+      "n": "slot",
+      "t": 0,
+      "b": 3,
+      "r": "0-7",
+      "role": "action_param",
+      "label": "Buffer Slot",
+      "hint": "Starting buffer slot (0-7)"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `addr` (uint8, byte 0): 7-bit I2C device address
+- `reg` (uint8, byte 1): Starting register address
+- `len` (uint8, byte 2): Number of bytes to read (1-8)
+- `slot` (uint8, byte 3): Starting buffer slot (0-7)
+
+**CAN Data Format:**
+```
+Byte:  0      1      2      3
+      [Addr] [Reg] [Len] [Slot]
+```
+
+**Examples:**
+
+**Read 6-axis sensor data:**
+```
+# Rule 1: Read accelerometer X,Y,Z (6 bytes starting at reg 0x3B into slots 0-5)
+action:add:0:0x450:0xFFFFFFFF:::0:I2C_READ_BUFFER:fixed:0x68:0x3B:6:0
+
+# Rule 2: Send buffer after read
+action:add:0:0x450:0xFFFFFFFF:::1:BUFFER_SEND:fixed:0x500
+```
+
+**Multi-sensor workflow:**
+```
+# Read temperature sensor (2 bytes)
+action:add:0:0x460:0xFFFFFFFF:::0:I2C_READ_BUFFER:fixed:0x48:0x00:2:0
+
+# Read humidity sensor (2 bytes)
+action:add:0:0x460:0xFFFFFFFF:::1:I2C_READ_BUFFER:fixed:0x40:0x00:2:2
+
+# Send combined data
+action:add:0:0x460:0xFFFFFFFF:::2:BUFFER_SEND:fixed:0x550
+```
+
+**Use Cases:**
+- Reading multi-byte sensor values
+- Collecting data from multiple I2C devices
+- IMU data acquisition
+- Building custom sensor packets
+
+### GPIO_READ_BUFFER
+
+Read digital pin state into buffer.
+
+**Action Definition:**
+```json
+{
+  "i": 11,
+  "n": "GPIO_READ_BUFFER",
+  "d": "Read GPIO state into buffer",
+  "c": "GPIO",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "pin",
+      "t": 0,
+      "b": 0,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "GPIO Pin",
+      "hint": "Pin to read"
+    },
+    {
+      "n": "slot",
+      "t": 0,
+      "b": 1,
+      "r": "0-7",
+      "role": "action_param",
+      "label": "Buffer Slot",
+      "hint": "Buffer slot to write (0-7)"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `pin` (uint8, byte 0): GPIO pin number to read
+- `slot` (uint8, byte 1): Buffer slot (0-7) to store result (0x00 = LOW, 0x01 = HIGH)
+
+**CAN Data Format:**
+```
+Byte:  0      1
+      [Pin] [Slot]
+```
+
+**Examples:**
+
+**Read 4 switches into buffer:**
+```
+# Read switch 1 (pin 2) → slot 0
+action:add:0:0x470:0xFFFFFFFF:::0:GPIO_READ_BUFFER:fixed:2:0
+
+# Read switch 2 (pin 3) → slot 1
+action:add:0:0x470:0xFFFFFFFF:::1:GPIO_READ_BUFFER:fixed:3:1
+
+# Read switch 3 (pin 4) → slot 2
+action:add:0:0x470:0xFFFFFFFF:::2:GPIO_READ_BUFFER:fixed:4:2
+
+# Read switch 4 (pin 5) → slot 3
+action:add:0:0x470:0xFFFFFFFF:::3:GPIO_READ_BUFFER:fixed:5:3
+
+# Send buffer with all switch states
+action:add:0:0x470:0xFFFFFFFF:::4:BUFFER_SEND:fixed:0x570
+
+# Result CAN message 0x570:
+# Byte 0: Switch 1 (0x00=off, 0x01=on)
+# Byte 1: Switch 2
+# Byte 2: Switch 3
+# Byte 3: Switch 4
+```
+
+**Use Cases:**
+- Reading multiple buttons/switches
+- Monitoring digital sensor states
+- Creating switch panels
+- Reading limit switches
+
+### ADC_READ_BUFFER
+
+Read analog pin value (16-bit) into buffer.
+
+**Action Definition:**
+```json
+{
+  "i": 12,
+  "n": "ADC_READ_BUFFER",
+  "d": "Read ADC value into buffer",
+  "c": "Analog",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "pin",
+      "t": 0,
+      "b": 0,
+      "r": "0-255",
+      "role": "action_param",
+      "label": "ADC Pin",
+      "hint": "Analog pin to read"
+    },
+    {
+      "n": "slot",
+      "t": 0,
+      "b": 1,
+      "r": "0-6",
+      "role": "action_param",
+      "label": "Buffer Slot",
+      "hint": "Starting buffer slot (0-6, uses 2 slots)"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `pin` (uint8, byte 0): Analog pin number
+- `slot` (uint8, byte 1): Starting buffer slot (0-6), uses 2 consecutive slots for 16-bit value
+
+**CAN Data Format:**
+```
+Byte:  0      1
+      [Pin] [Slot]
+```
+
+**Buffer Storage (16-bit little-endian):**
+```
+Slot N:   ADC_LSB
+Slot N+1: ADC_MSB
+```
+
+**Examples:**
+
+**Read 3 analog sensors:**
+```
+# Read potentiometer (pin A0) → slots 0-1
+action:add:0:0x480:0xFFFFFFFF:::0:ADC_READ_BUFFER:fixed:14:0
+
+# Read light sensor (pin A1) → slots 2-3
+action:add:0:0x480:0xFFFFFFFF:::1:ADC_READ_BUFFER:fixed:15:2
+
+# Read temperature sensor (pin A2) → slots 4-5
+action:add:0:0x480:0xFFFFFFFF:::2:ADC_READ_BUFFER:fixed:16:4
+
+# Send all sensor data
+action:add:0:0x480:0xFFFFFFFF:::3:BUFFER_SEND:fixed:0x580
+
+# Result CAN message 0x580:
+# Bytes 0-1: Potentiometer (16-bit)
+# Bytes 2-3: Light sensor (16-bit)
+# Bytes 4-5: Temperature (16-bit)
+# Bytes 6-7: Unused
+```
+
+**Use Cases:**
+- Multi-sensor analog data acquisition
+- Reading potentiometers/joysticks
+- Monitoring analog sensor arrays
+- Battery voltage monitoring
+
+### BUFFER_SEND
+
+Send buffer contents as a CAN message.
+
+**Action Definition:**
+```json
+{
+  "i": 13,
+  "n": "BUFFER_SEND",
+  "d": "Send buffer as CAN message",
+  "c": "Communication",
+  "trig": "can_msg",
+  "p": [
+    {
+      "n": "can_id",
+      "t": 1,
+      "b": 0,
+      "r": "0-2047",
+      "role": "action_param",
+      "label": "CAN ID",
+      "hint": "CAN ID to transmit with"
+    }
+  ]
+}
+```
+
+**Parameters:**
+- `can_id` (uint16, bytes 0-1): CAN message ID to transmit buffer with
+
+**CAN Data Format:**
+```
+Byte:  0-1
+      [CAN_ID_LSB]
+      [CAN_ID_MSB]
+```
+
+**Examples:**
+
+**Complete sensor collection workflow:**
+```
+# Trigger CAN ID: 0x490
+
+# Read sensor 1
+action:add:0:0x490:0xFFFFFFFF:::0:ADC_READ_BUFFER:fixed:14:0
+
+# Read sensor 2
+action:add:0:0x490:0xFFFFFFFF:::1:ADC_READ_BUFFER:fixed:15:2
+
+# Read sensor 3
+action:add:0:0x490:0xFFFFFFFF:::2:ADC_READ_BUFFER:fixed:16:4
+
+# Send all data
+action:add:0:0x490:0xFFFFFFFF:::3:BUFFER_SEND:fixed:0x590
+
+# Trigger: send:0x490:
+# Result:  CAN_TX;0x590;[8 bytes of sensor data];timestamp
+```
+
+**Automatic periodic collection:**
+```
+# Periodic trigger (every 100ms) - collect and send sensor data
+action:add:0:0x000:0x00000000:::0:ADC_READ_BUFFER:fixed:14:0
+action:add:0:0x000:0x00000000:::1:ADC_READ_BUFFER:fixed:15:2
+action:add:0:0x000:0x00000000:::2:BUFFER_SEND:fixed:0x5A0
+```
+
+**Use Cases:**
+- Transmitting collected sensor data
+- Creating custom CAN message formats
+- Multi-sensor data aggregation
+- Periodic telemetry transmission
+
+### BUFFER_CLEAR
+
+Clear the data buffer manually.
+
+**Action Definition:**
+```json
+{
+  "i": 14,
+  "n": "BUFFER_CLEAR",
+  "d": "Clear data buffer",
+  "c": "Buffer",
+  "trig": "can_msg",
+  "p": []
+}
+```
+
+**Parameters:** None
+
+**Examples:**
+
+**Reset between collection cycles:**
+```
+# Clear buffer before new collection
+action:add:0:0x4A0:0xFFFFFFFF:::0:BUFFER_CLEAR:fixed
+
+# Collect new data
+action:add:0:0x4A0:0xFFFFFFFF:::1:ADC_READ_BUFFER:fixed:14:0
+action:add:0:0x4A0:0xFFFFFFFF:::2:ADC_READ_BUFFER:fixed:15:2
+action:add:0:0x4A0:0xFFFFFFFF:::3:BUFFER_SEND:fixed:0x5B0
+```
+
+**Use Cases:**
+- Resetting buffer between data collection cycles
+- Ensuring clean slate for new measurements
+- Debugging buffer state
+
+### Phase 1 Usage Patterns
+
+**Pattern 1: Simple Multi-Sensor Collection**
+```
+Trigger → Read Sensor 1 → Read Sensor 2 → Read Sensor 3 → Send Buffer
+```
+
+**Pattern 2: Mixed Sensor Types**
+```
+Trigger → Read I2C (6 bytes) → Read ADC (2 bytes) → Send Buffer
+```
+
+**Pattern 3: Periodic Telemetry**
+```
+Timer (100ms) → Clear Buffer → Read All Sensors → Send Buffer → Repeat
+```
+
+**Pattern 4: On-Demand Sensor Query**
+```
+CAN Request (0x400) → Read Sensors → Send Response (0x500)
+```
+
+---
+
 ## CAN Message Handling
 
 ### Standard vs Extended IDs
@@ -1028,6 +1679,7 @@ CAN_ERR;RX_OVERFLOW;Buffer full;1234567
 | `get:actiondefs` | Get action defs | `get:actiondefs` |
 | `get:actiondef:{ID}` | Get specific def | `get:actiondef:7` |
 | `action:add:...` | Add rule | `action:add:0:0x500:0xFFFFFFFF:::0:NEOPIXEL:candata` |
+| `action:edit:...` | Update rule | `action:edit:1:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:14` |
 | `action:remove:{ID}` | Remove rule | `action:remove:1` |
 | `action:list` | List rules | `action:list` |
 | `action:clear` | Clear all rules | `action:clear` |

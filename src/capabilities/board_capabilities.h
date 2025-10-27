@@ -20,6 +20,7 @@ enum PlatformCapability {
     CAP_CRYPTO           = (1 << 7),   // Hardware crypto
     CAP_RTC              = (1 << 8),   // Real-time clock
     CAP_I2S              = (1 << 9),   // I2S audio
+    CAP_I2C              = (1 << 10),  // I2C communication
 };
 
 /**

@@ -35,7 +35,8 @@ const BoardCapabilities platform_capabilities = {
                        CAP_FLASH_STORAGE |
                        CAP_CRYPTO |
                        CAP_RTC |
-                       CAP_I2S,
+                       CAP_I2S |
+                       CAP_I2C,
 
     // Resource limits
     .max_action_rules = 64,       // Can support 64 rules with available RAM

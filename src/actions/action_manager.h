@@ -4,6 +4,18 @@
 #include "../hal/can_interface.h"
 #include "../hal/platform_config.h"
 #include "../capabilities/board_capabilities.h"
+#include "action_data_buffer.h"
+#include "pin_manager.h"
+
+// Platform-specific HAL interfaces
+#ifdef PLATFORM_SAMD51
+    #include "../hal/samd51_i2c.h"
+    #include "../hal/samd51_pwm.h"
+#elif defined(PLATFORM_RP2040)
+    // RP2040 I2C/PWM interfaces will go here
+#elif defined(PLATFORM_ESP32)
+    // ESP32 I2C/PWM interfaces will go here
+#endif
 
 // Platform-specific maximum rules (compile-time constants)
 #ifdef PLATFORM_RP2040
@@ -126,6 +138,22 @@ private:
     bool initialized_;
     uint8_t next_rule_id_;
 
+    // Phase 1: Data buffer system for multi-sensor collection
+    ActionDataBuffer action_buffer_;
+
+    // Phase 1: Pin management and validation
+    PinManager pin_manager_;
+
+    // Phase 1: Platform-specific peripheral interfaces
+    #ifdef PLATFORM_SAMD51
+        SAMD51_I2C i2c_interface_;
+        SAMD51_PWM pwm_interface_;
+    #elif defined(PLATFORM_RP2040)
+        // RP2040 interfaces
+    #elif defined(PLATFORM_ESP32)
+        // ESP32 interfaces
+    #endif
+
     /**
      * Check if a CAN message matches a rule's pattern
      * @param message The CAN message to check
@@ -166,6 +194,41 @@ private:
      * Execute ADC read and send action
      */
     bool execute_adc_read_send_action(uint8_t adc_pin, uint32_t response_id);
+
+    /**
+     * Phase 1: Execute PWM configure action with frequency control
+     */
+    bool execute_pwm_configure_action(uint8_t pin, uint32_t freq_hz, uint8_t duty, uint8_t resolution);
+
+    /**
+     * Phase 1: Execute I2C write action
+     */
+    bool execute_i2c_write_action(uint8_t sda, uint8_t scl, uint8_t addr, uint8_t reg, uint8_t data);
+
+    /**
+     * Phase 1: Execute I2C read to buffer action
+     */
+    bool execute_i2c_read_buffer_action(uint8_t sda, uint8_t scl, uint8_t addr, uint8_t reg, uint8_t num_bytes, uint8_t slot);
+
+    /**
+     * Phase 1: Execute GPIO read to buffer action
+     */
+    bool execute_gpio_read_buffer_action(uint8_t pin, uint8_t slot);
+
+    /**
+     * Phase 1: Execute ADC read to buffer action
+     */
+    bool execute_adc_read_buffer_action(uint8_t pin, uint8_t slot);
+
+    /**
+     * Phase 1: Execute buffer send action
+     */
+    bool execute_buffer_send_action(uint32_t can_id, uint8_t length, bool clear_after);
+
+    /**
+     * Phase 1: Execute buffer clear action
+     */
+    bool execute_buffer_clear_action();
 
     /**
      * Find empty slot for new rule

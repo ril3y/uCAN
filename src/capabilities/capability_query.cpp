@@ -16,6 +16,9 @@ void send_capabilities_json() {
     // Create JSON document (stack allocated for efficiency)
     JsonDocument doc;
 
+    // Protocol version
+    doc["protocol_version"] = "2.0";
+
     // Board info
     doc["board"] = platform_capabilities.board_name;
     doc["chip"] = platform_capabilities.chip_name;

@@ -2,9 +2,11 @@
 #include <Arduino.h>
 #include <string.h>
 #include "../capabilities/board_capabilities.h"
+#include "../utils/pin_error_logger.h"
 
-// NeoPixel support (SAMD51 only)
+// Platform-specific pin capabilities
 #ifdef PLATFORM_SAMD51
+#include "../capabilities/samd51/samd51_pin_caps.h"
 #include <Adafruit_NeoPixel.h>
 extern Adafruit_NeoPixel* neopixel_instance;  // Defined in samd51_can.cpp if available
 #endif
@@ -28,6 +30,17 @@ bool ActionManager::initialize(CANInterface* can_if) {
     }
 
     can_interface_ = can_if;
+
+    // Phase 1: Initialize pin capability system
+    #ifdef PLATFORM_SAMD51
+    samd51_init_pin_capabilities(&pin_manager_);
+    Serial.println("[INIT] Pin capability system initialized");
+    #endif
+
+    // Phase 1: Initialize data buffer
+    action_buffer_.clear();
+    Serial.println("[INIT] Action data buffer initialized");
+
     initialized_ = true;
 
     // Try to load rules from storage
@@ -605,6 +618,199 @@ uint8_t ActionManager::load_rules() {
 }
 
 // ============================================================================
+// Phase 1: New Action Handlers
+// ============================================================================
+
+#ifdef PLATFORM_SAMD51
+
+bool ActionManager::execute_pwm_configure_action(uint8_t pin, uint32_t freq_hz, uint8_t duty, uint8_t resolution) {
+    // Validate pin supports PWM
+    if (!pwm_interface_.is_valid_pwm_pin(pin)) {
+        LOG_PIN_ERROR(pin, "Pin does not support PWM");
+        return false;
+    }
+
+    // Check pin availability
+    if (!pin_manager_.is_available(pin, PINMODE_PWM)) {
+        LOG_PIN_ERROR(pin, "Pin already allocated or reserved");
+        return false;
+    }
+
+    // Allocate pin for PWM
+    if (!pin_manager_.allocate_pin(pin, PINMODE_PWM)) {
+        LOG_PIN_ERROR(pin, "Failed to allocate pin for PWM");
+        return false;
+    }
+
+    // Configure PWM with frequency
+    bool result = pwm_interface_.configure(pin, freq_hz, duty, resolution);
+    if (result) {
+        Serial.printf("[ACTION] PWM configured: pin=%d freq=%luHz duty=%d%% res=%d-bit\n",
+                     pin, freq_hz, duty, resolution);
+    }
+    return result;
+}
+
+bool ActionManager::execute_i2c_write_action(uint8_t sda, uint8_t scl, uint8_t addr, uint8_t reg, uint8_t data) {
+    // Initialize I2C
+    if (!i2c_interface_.initialize(sda, scl)) {
+        Serial.printf("[I2C_ERROR] Failed to initialize: %s\n", i2c_interface_.get_last_error());
+        return false;
+    }
+
+    // Write single byte
+    bool result = i2c_interface_.write(addr, reg, &data, 1);
+    if (result) {
+        Serial.printf("[ACTION] I2C write: addr=0x%02X reg=0x%02X data=0x%02X\n", addr, reg, data);
+    } else {
+        Serial.printf("[I2C_ERROR] Write failed: %s\n", i2c_interface_.get_last_error());
+    }
+    return result;
+}
+
+bool ActionManager::execute_i2c_read_buffer_action(uint8_t sda, uint8_t scl, uint8_t addr, uint8_t reg,
+                                                    uint8_t num_bytes, uint8_t slot) {
+    // Validate buffer slot
+    if (slot + num_bytes > 8) {
+        Serial.printf("[BUFFER_ERROR] I2C read would overflow buffer: slot=%d bytes=%d\n", slot, num_bytes);
+        return false;
+    }
+
+    // Initialize I2C
+    if (!i2c_interface_.initialize(sda, scl)) {
+        Serial.printf("[I2C_ERROR] Failed to initialize: %s\n", i2c_interface_.get_last_error());
+        return false;
+    }
+
+    // Read data into temporary buffer
+    uint8_t temp_data[8];
+    if (!i2c_interface_.read(addr, reg, temp_data, num_bytes)) {
+        Serial.printf("[I2C_ERROR] Read failed: %s\n", i2c_interface_.get_last_error());
+        return false;
+    }
+
+    // Write to action buffer
+    if (!action_buffer_.write(slot, temp_data, num_bytes)) {
+        Serial.printf("[BUFFER_ERROR] Failed to write I2C data to buffer slot %d\n", slot);
+        return false;
+    }
+
+    Serial.printf("[ACTION] I2C read to buffer: addr=0x%02X reg=0x%02X bytes=%d slot=%d\n",
+                 addr, reg, num_bytes, slot);
+    return true;
+}
+
+bool ActionManager::execute_gpio_read_buffer_action(uint8_t pin, uint8_t slot) {
+    // Validate buffer slot
+    if (slot >= 8) {
+        Serial.printf("[BUFFER_ERROR] Invalid buffer slot: %d\n", slot);
+        return false;
+    }
+
+    // Check pin availability for input
+    if (!pin_manager_.is_available(pin, PINMODE_GPIO_INPUT)) {
+        LOG_PIN_ERROR(pin, "Pin not available for GPIO input");
+        return false;
+    }
+
+    // Allocate pin
+    if (!pin_manager_.allocate_pin(pin, PINMODE_GPIO_INPUT)) {
+        LOG_PIN_ERROR(pin, "Failed to allocate pin");
+        return false;
+    }
+
+    // Configure pin as input
+    pinMode(pin, INPUT);
+
+    // Read pin state
+    uint8_t value = digitalRead(pin) ? 1 : 0;
+
+    // Write to buffer
+    if (!action_buffer_.write(slot, &value, 1)) {
+        Serial.printf("[BUFFER_ERROR] Failed to write GPIO to buffer slot %d\n", slot);
+        return false;
+    }
+
+    Serial.printf("[ACTION] GPIO read to buffer: pin=%d value=%d slot=%d\n", pin, value, slot);
+    return true;
+}
+
+bool ActionManager::execute_adc_read_buffer_action(uint8_t pin, uint8_t slot) {
+    // Validate buffer slot (ADC uses 2 bytes)
+    if (slot + 1 >= 8) {
+        Serial.printf("[BUFFER_ERROR] ADC read would overflow buffer: slot=%d\n", slot);
+        return false;
+    }
+
+    // Check pin availability for ADC
+    if (!pin_manager_.is_available(pin, PINMODE_ADC)) {
+        LOG_PIN_ERROR(pin, "Pin not available for ADC");
+        return false;
+    }
+
+    // Allocate pin
+    if (!pin_manager_.allocate_pin(pin, PINMODE_ADC)) {
+        LOG_PIN_ERROR(pin, "Failed to allocate pin for ADC");
+        return false;
+    }
+
+    // Read ADC value (10-bit or 12-bit depending on platform)
+    uint16_t adc_value = analogRead(pin);
+
+    // Write as uint16 (little-endian)
+    uint8_t data[2] = {
+        static_cast<uint8_t>(adc_value & 0xFF),
+        static_cast<uint8_t>((adc_value >> 8) & 0xFF)
+    };
+
+    if (!action_buffer_.write(slot, data, 2)) {
+        Serial.printf("[BUFFER_ERROR] Failed to write ADC to buffer slot %d\n", slot);
+        return false;
+    }
+
+    Serial.printf("[ACTION] ADC read to buffer: pin=%d value=%d slot=%d\n", pin, adc_value, slot);
+    return true;
+}
+
+bool ActionManager::execute_buffer_send_action(uint32_t can_id, uint8_t length, bool clear_after) {
+    // Validate length
+    if (length > 8) {
+        Serial.printf("[BUFFER_ERROR] Invalid CAN length: %d\n", length);
+        return false;
+    }
+
+    // Get buffer data
+    uint8_t valid_length;
+    const uint8_t* data = action_buffer_.read_all(valid_length);
+
+    // Use requested length or valid length, whichever is smaller
+    uint8_t send_length = (length < valid_length) ? length : valid_length;
+
+    // Send CAN message
+    bool result = execute_can_send_action(can_id, data, send_length);
+
+    // Clear buffer if requested
+    if (clear_after) {
+        action_buffer_.clear();
+        Serial.println("[ACTION] Buffer cleared after send");
+    }
+
+    if (result) {
+        Serial.printf("[ACTION] Buffer sent as CAN: id=0x%03lX len=%d clear=%d\n",
+                     can_id, send_length, clear_after);
+    }
+    return result;
+}
+
+bool ActionManager::execute_buffer_clear_action() {
+    action_buffer_.clear();
+    Serial.println("[ACTION] Buffer manually cleared");
+    return true;
+}
+
+#endif // PLATFORM_SAMD51
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -619,6 +825,14 @@ const char* action_type_to_string(ActionType type) {
         case ACTION_PWM_SET: return "PWM_SET";
         case ACTION_NEOPIXEL_COLOR: return "NEOPIXEL_COLOR";
         case ACTION_NEOPIXEL_OFF: return "NEOPIXEL_OFF";
+        // Phase 1 actions
+        case ACTION_PWM_CONFIGURE: return "PWM_CONFIGURE";
+        case ACTION_I2C_WRITE: return "I2C_WRITE";
+        case ACTION_I2C_READ_BUFFER: return "I2C_READ_BUFFER";
+        case ACTION_GPIO_READ_BUFFER: return "GPIO_READ_BUFFER";
+        case ACTION_ADC_READ_BUFFER: return "ADC_READ_BUFFER";
+        case ACTION_BUFFER_SEND: return "BUFFER_SEND";
+        case ACTION_BUFFER_CLEAR: return "BUFFER_CLEAR";
         default: return "UNKNOWN";
     }
 }
@@ -628,18 +842,32 @@ bool is_action_supported(ActionType type) {
         case ACTION_GPIO_SET:
         case ACTION_GPIO_CLEAR:
         case ACTION_GPIO_TOGGLE:
+        case ACTION_GPIO_READ_BUFFER:
             return platform_capabilities.has_capability(CAP_GPIO_DIGITAL);
 
         case ACTION_CAN_SEND:
         case ACTION_CAN_SEND_PERIODIC:
+        case ACTION_BUFFER_SEND:
             return platform_capabilities.has_capability(CAP_CAN_SEND);
 
         case ACTION_PWM_SET:
+        case ACTION_PWM_CONFIGURE:
             return platform_capabilities.has_capability(CAP_GPIO_PWM);
 
         case ACTION_NEOPIXEL_COLOR:
         case ACTION_NEOPIXEL_OFF:
             return platform_capabilities.has_capability(CAP_NEOPIXEL);
+
+        // Phase 1 actions
+        case ACTION_ADC_READ_BUFFER:
+            return platform_capabilities.has_capability(CAP_GPIO_ANALOG);
+
+        case ACTION_I2C_WRITE:
+        case ACTION_I2C_READ_BUFFER:
+            return platform_capabilities.has_capability(CAP_I2C);
+
+        case ACTION_BUFFER_CLEAR:
+            return true;  // Always supported
 
         default:
             return false;

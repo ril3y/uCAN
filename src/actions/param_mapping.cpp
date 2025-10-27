@@ -134,6 +134,20 @@ void print_action_definition_json(const ActionDefinition* def) {
         Serial.print(param.role);
         Serial.print("\"");
 
+        // Label (optional, for UI)
+        if (param.label != nullptr) {
+            Serial.print(",\"label\":\"");
+            Serial.print(param.label);
+            Serial.print("\"");
+        }
+
+        // Hint (optional, for UI)
+        if (param.hint != nullptr) {
+            Serial.print(",\"hint\":\"");
+            Serial.print(param.hint);
+            Serial.print("\"");
+        }
+
         Serial.print("}");
     }
 

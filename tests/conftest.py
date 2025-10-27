@@ -334,6 +334,16 @@ def verify_status_ok(wait_for_response):
     return _verify
 
 
+@pytest.fixture
+def clear_rules(send_command):
+    """Clear all rules before test."""
+    # Clear rules 1-30
+    for rule_id in range(1, 31):
+        send_command(f"action:remove:{rule_id}")
+        time.sleep(0.02)
+    time.sleep(0.1)
+
+
 @pytest.fixture(autouse=True)
 def test_separator():
     """Print separator between tests for easier reading."""

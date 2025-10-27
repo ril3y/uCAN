@@ -12,10 +12,10 @@
 // ----------------------------------------------------------------------------
 
 static const ParamMapping NEOPIXEL_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "r", "action_param"},           // Red from byte 0
-    {1, 0, 8, PARAM_UINT8, 0, 255, "g", "action_param"},           // Green from byte 1
-    {2, 0, 8, PARAM_UINT8, 0, 255, "b", "action_param"},           // Blue from byte 2
-    {3, 0, 8, PARAM_UINT8, 0, 255, "brightness", "action_param"}   // Brightness from byte 3
+    {0, 0, 8, PARAM_UINT8, 0, 255, "r", "action_param", "Red", "Red intensity (0-255)"},
+    {1, 0, 8, PARAM_UINT8, 0, 255, "g", "action_param", "Green", "Green intensity (0-255)"},
+    {2, 0, 8, PARAM_UINT8, 0, 255, "b", "action_param", "Blue", "Blue intensity (0-255)"},
+    {3, 0, 8, PARAM_UINT8, 0, 255, "brightness", "action_param", "Brightness", "Overall brightness (0-255, 0=off, 255=full)"}
 };
 
 static const ActionDefinition NEOPIXEL_DEF = {
@@ -33,8 +33,8 @@ static const ActionDefinition NEOPIXEL_DEF = {
 // ----------------------------------------------------------------------------
 
 static const ParamMapping PWM_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param"},    // Pin number from byte 0
-    {1, 0, 8, PARAM_UINT8, 0, 255, "duty", "action_param"}    // Duty cycle from byte 1
+    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "PWM Pin", "Pin number supporting PWM (e.g., 3, 5, 6, 9, 10, 11)"},
+    {1, 0, 8, PARAM_UINT8, 0, 255, "duty", "action_param", "Duty Cycle", "PWM duty cycle (0=off, 128=50%, 255=full)"}
 };
 
 static const ActionDefinition PWM_DEF = {
@@ -52,7 +52,7 @@ static const ActionDefinition PWM_DEF = {
 // ----------------------------------------------------------------------------
 
 static const ParamMapping GPIO_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param"}     // Pin number from byte 0
+    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "GPIO Pin Number", "Pin to control (e.g., 13 for onboard LED)"}
 };
 
 static const ActionDefinition GPIO_SET_DEF = {
@@ -90,7 +90,7 @@ static const ActionDefinition GPIO_TOGGLE_DEF = {
 // ----------------------------------------------------------------------------
 
 static const ParamMapping CAN_SEND_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "can_id", "output_param"},     // CAN ID to send to
+    {0, 0, 8, PARAM_UINT8, 0, 255, "can_id", "output_param", "CAN Message ID", "Target CAN ID to send message to (e.g., 0x100)"}
 };
 
 static const ActionDefinition CAN_SEND_DEF = {
@@ -108,8 +108,8 @@ static const ActionDefinition CAN_SEND_DEF = {
 // ----------------------------------------------------------------------------
 
 static const ParamMapping CAN_SEND_PERIODIC_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "can_id", "output_param"},     // CAN ID to send to
-    {1, 0, 8, PARAM_UINT8, 0, 255, "interval_ms", "trigger_param"} // Interval in milliseconds (simplified)
+    {0, 0, 8, PARAM_UINT8, 0, 255, "can_id", "output_param", "CAN Message ID", "Target CAN ID to send message to (e.g., 0x100)"},
+    {1, 0, 8, PARAM_UINT8, 0, 255, "interval_ms", "trigger_param", "Send Interval", "How often to send in milliseconds (e.g., 100 = 10Hz)"}
 };
 
 static const ActionDefinition CAN_SEND_PERIODIC_DEF = {

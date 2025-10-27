@@ -44,7 +44,19 @@ uint8_t ActionManagerBase::check_and_execute(const CANMessage& message) {
     for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
         if (rules_[i].id != 0 && rules_[i].enabled) {
             if (matches_rule(message, rules_[i])) {
-                if (execute_action(rules_[i], message)) {
+                bool success = execute_action(rules_[i], message);
+
+                // Report action execution
+                Serial.print("ACTION;");
+                Serial.print(rules_[i].id);
+                Serial.print(";");
+                Serial.print(action_type_to_string(rules_[i].action));
+                Serial.print(";0x");
+                Serial.print(message.id, HEX);
+                Serial.print(";");
+                Serial.println(success ? "OK" : "FAIL");
+
+                if (success) {
                     matches++;
                 }
             }

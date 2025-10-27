@@ -30,6 +30,19 @@ enum ActionType {
     ACTION_PWM_SET,            // Set PWM duty cycle (SAMD51, ESP32)
     ACTION_NEOPIXEL_COLOR,     // Set NeoPixel RGB color (SAMD51)
     ACTION_NEOPIXEL_OFF,       // Turn off NeoPixel (SAMD51)
+
+    // Enhanced peripheral actions (Phase 1)
+    ACTION_PWM_CONFIGURE,      // Configure PWM with frequency and resolution
+    ACTION_I2C_WRITE,          // Write to I2C device
+    ACTION_I2C_READ_BUFFER,    // Read from I2C device into data buffer
+
+    // Buffer-based read actions (Phase 1)
+    ACTION_GPIO_READ_BUFFER,   // Read GPIO pin into data buffer
+    ACTION_ADC_READ_BUFFER,    // Read ADC value into data buffer
+
+    // Buffer management actions (Phase 1)
+    ACTION_BUFFER_SEND,        // Send data buffer as CAN message
+    ACTION_BUFFER_CLEAR,       // Clear data buffer
 };
 
 /**

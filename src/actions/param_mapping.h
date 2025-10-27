@@ -31,6 +31,8 @@ struct ParamMapping {
     uint32_t max_value;         // Maximum valid value (for validation/clamping)
     const char* name;           // Parameter name (for UI discovery)
     const char* role;           // Parameter role: "action_param", "trigger_param", "output_param" (v2.0)
+    const char* label;          // Human-friendly label for UI (optional, can be nullptr)
+    const char* hint;           // Help text/example for UI (optional, can be nullptr)
 };
 
 /**

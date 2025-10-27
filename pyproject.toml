@@ -122,6 +122,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "hardware: marks tests that require hardware connection (deselect with '-m \"not hardware\"')",
+]
 addopts = [
     "-v",
     "--tb=short",
