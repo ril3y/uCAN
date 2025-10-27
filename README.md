@@ -45,16 +45,6 @@ The uCAN Web UI provides a modern, browser-based interface for monitoring and co
 - **NeoPixel Visual Feedback** - Status indication on supported boards
 - **Loopback Mode** - Built-in testing without external CAN devices
 
-### 🐍 Python TUI Application (Optional)
-- **Terminal-Based UI** - Alternative to web interface for CLI environments
-- **Real-time Monitoring** - Live CAN message display with color coding
-- **Extensible Parser System** - Custom message interpreters with YAML configuration
-- **Custom Views** - Pluggable visualization widgets for specific CAN IDs
-- **Message Filtering** - Interactive filtering by type, ID, or content
-- **Statistics Tracking** - Message rates, error counts, data rates
-- **CSV Export** - Save captured messages with timestamps
-- **Cross-Platform** - Windows, Linux, macOS support
-
 ---
 
 ## 🚀 Quick Start
