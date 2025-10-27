@@ -13,6 +13,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestPhase1I2C:
     """Test suite for Phase 1 I2C actions."""
 

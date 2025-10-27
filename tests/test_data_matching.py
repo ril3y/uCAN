@@ -13,6 +13,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestDataMatching:
     """Test suite for CAN data pattern matching."""
 

@@ -14,6 +14,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestActionDefinitions:
     """Test suite for ACTIONDEF message schema validation."""
 

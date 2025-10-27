@@ -12,6 +12,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestErrorHandling:
     """Test suite for error handling and validation."""
 

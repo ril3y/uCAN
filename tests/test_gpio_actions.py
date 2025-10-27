@@ -18,6 +18,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestGPIOActions:
     """Test suite for GPIO action execution."""
 

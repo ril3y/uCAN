@@ -16,6 +16,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestActionReporting:
     """Test suite for ACTION execution reporting."""
 

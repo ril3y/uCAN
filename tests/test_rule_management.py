@@ -20,6 +20,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestRuleManagement:
     """Test suite for action rule management commands."""
 

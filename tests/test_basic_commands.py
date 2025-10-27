@@ -20,6 +20,7 @@ import json
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestBasicCommands:
     """Test suite for basic query commands."""
 

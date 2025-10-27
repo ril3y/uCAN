@@ -12,6 +12,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestPhase1Buffer:
     """Test suite for Phase 1 buffer system actions."""
 

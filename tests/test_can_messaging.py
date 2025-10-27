@@ -18,6 +18,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestCANMessaging:
     """Test suite for CAN message transmission."""
 

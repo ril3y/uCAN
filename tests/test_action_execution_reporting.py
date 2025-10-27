@@ -20,6 +20,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestActionExecutionReporting:
     """Test that firmware reports action execution with CAN ID"""
 

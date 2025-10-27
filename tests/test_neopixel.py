@@ -13,6 +13,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestNeopixelAction:
     """Test suite for NEOPIXEL RGB LED control."""
 

@@ -12,6 +12,7 @@ import time
 
 
 @pytest.mark.hardware
+@pytest.mark.integration
 class TestPWMActions:
     """Test suite for PWM action execution."""
 
