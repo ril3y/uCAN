@@ -33,12 +33,15 @@ run_*.py
 monitor_debug.py
 cppcheck_report.txt
 
-# Test scripts (keep in separate test repo)
-test_*.py
-test_*.ps1
-test_*.sh
-*_rules.py
-simple_test.py
+# Test scripts in root directory ONLY (keep organized tests in tests/ directory)
+/test_*.py
+/test_*.ps1
+/test_*.sh
+/*_rules.py
+/simple_test.py
+
+# Allow test files in tests/ directory
+!tests/test_*.py
 
 # Temporary documentation
 PHASE*.md
