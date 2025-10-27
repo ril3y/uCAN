@@ -42,7 +42,7 @@ class TestActionDefinitions:
         """Test that all action definitions have valid category values."""
         action_defs = get_action_definitions()
 
-        valid_categories = ["GPIO", "PWM", "Display", "Communication", "I2C", "Analog", "Buffer", "Sensor"]
+        valid_categories = ["GPIO", "PWM", "Display", "Communication", "I2C", "Analog", "Buffer", "Sensor", "CAN", "System"]
 
         for action_def in action_defs:
             category = action_def["c"]

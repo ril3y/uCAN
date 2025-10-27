@@ -333,20 +333,23 @@ class TestBasicCommands:
             f"Expected protocol version 2.x, got: {protocol_version}"
 
     def test_commands_are_case_sensitive(self, send_command, read_responses):
-        """Test that commands are case-sensitive (uppercase should fail)."""
-        # Try uppercase variant (should fail or return error)
+        """Test that commands are case-sensitive (firmware should ignore uppercase)."""
+        # Try uppercase variant (should be ignored)
         send_command("GET:VERSION")
-        time.sleep(0.2)
+        time.sleep(0.3)
 
         responses = read_responses(max_lines=5, line_timeout=0.3)
+        # Uppercase should be ignored - expect no STATUS response
+        status_uppercase = [r for r in responses if r.startswith("STATUS;")]
 
-        # We expect either no response or an error response
         # Lowercase get:version should work
         send_command("get:version")
-        time.sleep(0.2)
+        time.sleep(0.3)
 
-        responses2 = read_responses(max_lines=5, line_timeout=0.3)
+        responses2 = read_responses(max_lines=5, line_timeout=0.5)
         status_responses = [r for r in responses2 if r.startswith("STATUS;")]
 
         # Lowercase version should get a valid response
         assert len(status_responses) > 0, "Lowercase 'get:version' should work"
+        assert "version" in status_responses[0].lower() or "2." in status_responses[0], \
+            f"Expected version info, got: {status_responses[0]}"

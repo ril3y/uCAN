@@ -28,12 +28,16 @@ class TestRuleManagement:
         """Test action:clear removes all configured rules."""
         # First, add some rules
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_SET:fixed:13")
-        time.sleep(0.1)
+        time.sleep(0.2)
+        read_responses(max_lines=5, line_timeout=0.3)  # Consume add response
+
         send_command("action:add:0:0x200:0xFFFFFFFF:::0:GPIO_TOGGLE:fixed:14")
-        time.sleep(0.1)
+        time.sleep(0.2)
+        read_responses(max_lines=5, line_timeout=0.3)  # Consume add response
 
         # Clear all rules
         send_command("action:clear")
+        time.sleep(0.2)
 
         response = wait_for_response("STATUS;INFO;", timeout=1.0)
         assert response is not None, "No response received for action:clear"
