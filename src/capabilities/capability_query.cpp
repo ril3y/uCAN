@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <string.h>
 #include "board_capabilities.h"
+
+// Device name storage (mutable, can be changed at runtime)
+char device_name[MAX_DEVICE_NAME_LENGTH] = "";  // Empty = use default board name
 
 /**
  * Send capabilities as JSON response
@@ -16,6 +20,13 @@ void send_capabilities_json() {
     doc["board"] = platform_capabilities.board_name;
     doc["chip"] = platform_capabilities.chip_name;
     doc["manufacturer"] = platform_capabilities.manufacturer;
+
+    // Add device name if set, otherwise use board name
+    if (device_name[0] != '\0') {
+        doc["device_name"] = device_name;
+    } else {
+        doc["device_name"] = platform_capabilities.board_name;
+    }
 
     // Resource counts
     doc["gpio"] = platform_capabilities.gpio_count;
@@ -109,6 +120,7 @@ void send_supported_actions() {
 
     if (platform_capabilities.has_capability(CAP_CAN_SEND)) {
         print_action("CAN_SEND");
+        print_action("CAN_SEND_PERIODIC");
     }
 
     // Platform-specific actions
@@ -129,4 +141,79 @@ void send_supported_actions() {
     }
 
     Serial.println();
+}
+
+/**
+ * Set custom device name
+ *
+ * @param name New device name (max MAX_DEVICE_NAME_LENGTH chars)
+ */
+void set_device_name(const char* name) {
+    if (!name) {
+        device_name[0] = '\0';  // Clear name
+        return;
+    }
+
+    // Copy name, ensuring null termination
+    strncpy(device_name, name, MAX_DEVICE_NAME_LENGTH - 1);
+    device_name[MAX_DEVICE_NAME_LENGTH - 1] = '\0';
+
+    // Save to persistent storage
+    save_device_name();
+
+    // Send status update
+    Serial.print("STATUS;NAME_SET;Device name set to: ");
+    Serial.println(device_name);
+}
+
+/**
+ * Get current device name
+ *
+ * @return Current device name, or board name if not set
+ */
+const char* get_device_name() {
+    if (device_name[0] != '\0') {
+        return device_name;
+    }
+    return platform_capabilities.board_name;
+}
+
+/**
+ * Load device name from persistent storage
+ *
+ * @return true if name was loaded
+ */
+bool load_device_name() {
+#if defined(PLATFORM_SAMD51)
+    // SAMD51: Use EEPROM emulation or Flash storage
+    // For now, just return false (not implemented)
+    // TODO: Implement Flash storage
+    return false;
+#elif defined(PLATFORM_RP2040)
+    // RP2040: Use Flash storage
+    // TODO: Implement Flash storage
+    return false;
+#else
+    return false;
+#endif
+}
+
+/**
+ * Save device name to persistent storage
+ *
+ * @return true if name was saved
+ */
+bool save_device_name() {
+#if defined(PLATFORM_SAMD51)
+    // SAMD51: Use EEPROM emulation or Flash storage
+    // For now, just return false (not implemented)
+    // TODO: Implement Flash storage
+    return false;
+#elif defined(PLATFORM_RP2040)
+    // RP2040: Use Flash storage
+    // TODO: Implement Flash storage
+    return false;
+#else
+    return false;
+#endif
 }

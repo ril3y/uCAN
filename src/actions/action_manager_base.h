@@ -1,6 +1,8 @@
 #pragma once
 
 #include "action_types.h"
+#include "custom_command.h"
+#include "param_mapping.h"
 #include "../hal/can_interface.h"
 #include "../hal/platform_config.h"
 #include "../capabilities/board_capabilities.h"
@@ -17,22 +19,28 @@
 #endif
 
 /**
- * ActionManager
+ * ActionManagerBase
  *
- * Manages action rules and executes them when CAN messages match.
- * Provides methods to add, remove, list, and execute action rules.
+ * Abstract base class for managing action rules across multiple platforms.
+ * Contains all platform-agnostic logic (parsing, storage, matching).
+ * Platform-specific execution is delegated to derived classes.
+ *
+ * This design allows:
+ * - Code reuse across platforms (rule matching, parsing, persistence)
+ * - Platform isolation (NeoPixel code only in SAMD51ActionManager)
+ * - Easy addition of new platforms
  */
-class ActionManager {
+class ActionManagerBase {
 public:
-    ActionManager();
-    ~ActionManager();
+    ActionManagerBase();
+    virtual ~ActionManagerBase();
 
     /**
      * Initialize the action manager
      * @param can_if Pointer to CAN interface for sending messages
      * @return true if successful
      */
-    bool initialize(CANInterface* can_if);
+    virtual bool initialize(CANInterface* can_if);
 
     /**
      * Check if a CAN message matches any rules and execute actions
@@ -120,12 +128,68 @@ public:
      */
     uint8_t load_rules();
 
-private:
+    /**
+     * Get custom command registry for this platform
+     * @return Reference to custom command registry
+     */
+    CustomCommandRegistry& get_custom_commands() { return custom_commands_; }
+
+protected:
+    // Platform-specific action execution (pure virtual methods)
+
+    /**
+     * Execute GPIO action (set/clear/toggle)
+     * All platforms must implement basic GPIO
+     */
+    virtual bool execute_gpio_action(ActionType type, uint8_t pin) = 0;
+
+    /**
+     * Execute PWM action (set duty cycle)
+     * Platform must return false if PWM not supported
+     */
+    virtual bool execute_pwm_action(uint8_t pin, uint8_t duty) = 0;
+
+    /**
+     * Execute NeoPixel action (set color/brightness)
+     * Platform must return false if NeoPixel not available
+     */
+    virtual bool execute_neopixel_action(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) = 0;
+
+    /**
+     * Execute ADC read and send action
+     * Platform must return false if ADC not available
+     */
+    virtual bool execute_adc_read_send_action(uint8_t adc_pin, uint32_t response_id) = 0;
+
+    /**
+     * Save rules to platform-specific persistent storage
+     * @return true if successful, false if not supported/failed
+     */
+    virtual bool save_rules_impl() = 0;
+
+    /**
+     * Load rules from platform-specific persistent storage
+     * @return Number of rules loaded
+     */
+    virtual uint8_t load_rules_impl() = 0;
+
+    /**
+     * Register platform-specific custom commands
+     * Called during initialize() to populate custom command registry
+     */
+    virtual void register_custom_commands() = 0;
+
+    // Shared resources accessible to derived classes
     ActionRule rules_[MAX_ACTION_RULES];
     CANInterface* can_interface_;
     bool initialized_;
     uint8_t next_rule_id_;
+    CustomCommandRegistry custom_commands_;
 
+    // CAN send is platform-agnostic (uses CANInterface)
+    bool execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length);
+
+private:
     /**
      * Check if a CAN message matches a rule's pattern
      * @param message The CAN message to check
@@ -135,37 +199,12 @@ private:
     bool matches_rule(const CANMessage& message, const ActionRule& rule) const;
 
     /**
-     * Execute an action
+     * Execute an action (dispatches to platform-specific implementations)
      * @param rule The rule containing the action
      * @param message The triggering CAN message (for context)
      * @return true if action executed successfully
      */
     bool execute_action(const ActionRule& rule, const CANMessage& message);
-
-    /**
-     * Execute GPIO action
-     */
-    bool execute_gpio_action(ActionType type, uint8_t pin);
-
-    /**
-     * Execute PWM action
-     */
-    bool execute_pwm_action(uint8_t pin, uint8_t duty);
-
-    /**
-     * Execute NeoPixel action
-     */
-    bool execute_neopixel_action(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness);
-
-    /**
-     * Execute CAN send action
-     */
-    bool execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length);
-
-    /**
-     * Execute ADC read and send action
-     */
-    bool execute_adc_read_send_action(uint8_t adc_pin, uint32_t response_id);
 
     /**
      * Find empty slot for new rule

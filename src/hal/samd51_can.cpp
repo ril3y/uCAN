@@ -55,8 +55,9 @@ bool SAMD51CAN::initialize(const CANConfig& config) {
     acceptance_filter_ = config.acceptance_filter;
     acceptance_mask_ = config.acceptance_mask;
 
-    // Initialize NeoPixel for visual feedback
-    init_neopixel();
+    // NOTE: NeoPixel visual feedback is now handled by ActionManager
+    // HAL no longer initializes or controls NeoPixel
+    // init_neopixel();  // DISABLED - ActionManager handles this
 
     initialized_ = true;
     error_state_ = false;

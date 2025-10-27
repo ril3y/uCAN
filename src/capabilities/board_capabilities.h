@@ -67,7 +67,30 @@ struct BoardCapabilities {
 // Global capability structure (defined per-platform)
 extern const BoardCapabilities platform_capabilities;
 
+// Device naming
+#define MAX_DEVICE_NAME_LENGTH 32
+extern char device_name[MAX_DEVICE_NAME_LENGTH];  // User-configurable device name
+
 // Capability query functions
 void send_capabilities_json();       // Send JSON formatted capabilities
 void send_pin_info();                // Send available pin information
 void send_supported_actions();       // Send list of supported action types
+
+// Device name management
+void set_device_name(const char* name);  // Set custom device name
+const char* get_device_name();           // Get current device name
+bool load_device_name();                 // Load name from storage
+bool save_device_name();                 // Save name to storage
+
+// Platform-specific default rules
+#ifdef PLATFORM_SAMD51
+class ActionManagerBase;  // Forward declaration
+struct ActionRule;        // Forward declaration
+uint8_t load_samd51_default_rules(ActionManagerBase* manager);
+
+// Flash storage functions (SAMD51 only)
+bool init_flash_storage();
+bool save_rules_to_flash(const ActionRule* rules, uint8_t count);
+uint8_t load_rules_from_flash(ActionRule* rules, uint8_t max_count);
+bool erase_flash_storage();
+#endif

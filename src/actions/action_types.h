@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// Forward declaration for ParamSource (defined in param_mapping.h)
+// This avoids circular dependency between action_types.h and param_mapping.h
+enum ParamSource : uint8_t;
+
 /**
  * Action Types
  *
@@ -19,14 +23,13 @@ enum ActionType {
     ACTION_GPIO_TOGGLE,        // Toggle pin state
 
     // CAN actions (all platforms)
-    ACTION_CAN_SEND,           // Send CAN message
+    ACTION_CAN_SEND,           // Send CAN message once
+    ACTION_CAN_SEND_PERIODIC,  // Send CAN message periodically
 
     // Platform-specific actions (require capability check)
     ACTION_PWM_SET,            // Set PWM duty cycle (SAMD51, ESP32)
     ACTION_NEOPIXEL_COLOR,     // Set NeoPixel RGB color (SAMD51)
     ACTION_NEOPIXEL_OFF,       // Turn off NeoPixel (SAMD51)
-    ACTION_ADC_READ,           // Read ADC value (all with ADC)
-    ACTION_ADC_READ_SEND,      // Read ADC and send via CAN (all with ADC)
 };
 
 /**
@@ -55,18 +58,13 @@ union ActionParams {
         uint8_t brightness;    // Brightness (0-255), 0 = use default
     } neopixel;
 
-    // CAN send actions: ACTION_CAN_SEND
+    // CAN send actions: ACTION_CAN_SEND_PERIODIC
     struct {
         uint32_t can_id;       // CAN ID to send
         uint8_t data[8];       // Data bytes
         uint8_t length;        // Data length (0-8)
+        uint32_t interval_ms;  // Interval in ms (for periodic)
     } can_send;
-
-    // ADC actions: ACTION_ADC_READ_SEND
-    struct {
-        uint8_t adc_pin;       // ADC pin to read
-        uint32_t response_id;  // CAN ID for response
-    } adc;
 
     // Raw bytes for storage/serialization
     uint8_t raw[12];
@@ -77,6 +75,10 @@ union ActionParams {
  *
  * Defines a CAN message pattern and the action to execute when matched.
  * Rules are evaluated in order for each received CAN message.
+ *
+ * NEW in v2.0: Supports parameter extraction from CAN data bytes.
+ * - param_source: PARAM_FROM_RULE (default, backward compatible) or PARAM_FROM_CAN_DATA
+ * - param_data_offset: Byte offset in CAN data where parameter extraction begins
  */
 struct ActionRule {
     // Rule management
@@ -92,7 +94,15 @@ struct ActionRule {
 
     // Action to execute
     ActionType action;         // Action type
-    ActionParams params;       // Action-specific parameters
+    ActionParams params;       // Action-specific parameters (used when param_source = PARAM_FROM_RULE)
+
+    // Periodic action state (for ACTION_CAN_SEND_PERIODIC)
+    uint32_t last_execute_ms;  // Last execution timestamp (millis())
+    uint32_t execute_count;    // Number of times executed
+
+    // NEW: Parameter source control (v2.0)
+    ParamSource param_source;  // Where to get action parameters from
+    uint8_t param_data_offset; // CAN data byte offset for parameter extraction (default 0)
 };
 
 // Helper functions for action validation

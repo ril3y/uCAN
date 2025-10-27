@@ -1,15 +1,9 @@
-#include "action_manager.h"
+#include "action_manager_base.h"
 #include <Arduino.h>
 #include <string.h>
 #include "../capabilities/board_capabilities.h"
 
-// NeoPixel support (SAMD51 only)
-#ifdef PLATFORM_SAMD51
-#include <Adafruit_NeoPixel.h>
-extern Adafruit_NeoPixel* neopixel_instance;  // Defined in samd51_can.cpp if available
-#endif
-
-ActionManager::ActionManager()
+ActionManagerBase::ActionManagerBase()
     : can_interface_(nullptr)
     , initialized_(false)
     , next_rule_id_(1)
@@ -18,11 +12,11 @@ ActionManager::ActionManager()
     memset(rules_, 0, sizeof(rules_));
 }
 
-ActionManager::~ActionManager() {
-    // Nothing to clean up
+ActionManagerBase::~ActionManagerBase() {
+    // Nothing to clean up (derived classes handle their own resources)
 }
 
-bool ActionManager::initialize(CANInterface* can_if) {
+bool ActionManagerBase::initialize(CANInterface* can_if) {
     if (!can_if) {
         return false;
     }
@@ -30,13 +24,16 @@ bool ActionManager::initialize(CANInterface* can_if) {
     can_interface_ = can_if;
     initialized_ = true;
 
+    // Let platform register its custom commands
+    register_custom_commands();
+
     // Try to load rules from storage
     load_rules();
 
     return true;
 }
 
-uint8_t ActionManager::check_and_execute(const CANMessage& message) {
+uint8_t ActionManagerBase::check_and_execute(const CANMessage& message) {
     if (!initialized_) {
         return 0;
     }
@@ -57,7 +54,7 @@ uint8_t ActionManager::check_and_execute(const CANMessage& message) {
     return matches;
 }
 
-uint8_t ActionManager::update_periodic() {
+uint8_t ActionManagerBase::update_periodic() {
     if (!initialized_) {
         return 0;
     }
@@ -104,7 +101,7 @@ uint8_t ActionManager::update_periodic() {
     return executed;
 }
 
-uint8_t ActionManager::add_rule(const ActionRule& rule) {
+uint8_t ActionManagerBase::add_rule(const ActionRule& rule) {
     if (!initialized_) {
         return 0;
     }
@@ -139,12 +136,13 @@ uint8_t ActionManager::add_rule(const ActionRule& rule) {
     return new_rule.id;
 }
 
-uint8_t ActionManager::parse_and_add_rule(const char* command_str) {
+uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
     if (!initialized_ || !command_str) {
         return 0;
     }
 
-    // Parse format: ID:CAN_ID:CAN_MASK:DATA:DATA_MASK:DATA_LEN:ACTION_TYPE:PARAM1:PARAM2:...
+    // Parse format: ID:CAN_ID:CAN_MASK:DATA:DATA_MASK:DATA_LEN:ACTION_TYPE:PARAM_SOURCE:PARAM1:PARAM2:...
+    // PARAM_SOURCE is optional for backward compatibility
     char buffer[256];
     strncpy(buffer, command_str, sizeof(buffer) - 1);
     buffer[sizeof(buffer) - 1] = '\0';
@@ -193,42 +191,86 @@ uint8_t ActionManager::parse_and_add_rule(const char* command_str) {
     // Parse action type
     const char* action_type = tokens[6];
 
-    if (strcmp(action_type, "GPIO_SET") == 0 && token_count >= 8) {
+    // NEW: Parse parameter source (token 7, optional for backward compatibility)
+    // v2.0: PARAM_SOURCE is REQUIRED (no backward compatibility)
+    rule.param_data_offset = 0;
+
+    // Token 7 MUST be "candata" or "fixed"
+    if (token_count < 8) {
+        // Missing PARAM_SOURCE field - error
+        return 0;
+    }
+
+    if (strcmp(tokens[7], "candata") == 0 || strcmp(tokens[7], "can") == 0) {
+        rule.param_source = PARAM_FROM_CAN_DATA;
+    } else if (strcmp(tokens[7], "fixed") == 0 || strcmp(tokens[7], "rule") == 0) {
+        rule.param_source = PARAM_FROM_RULE;
+    } else {
+        // Invalid PARAM_SOURCE value - error
+        return 0;
+    }
+
+    uint8_t param_start_index = 8;  // Parameters always start at token 8 in v2.0
+
+    // Parse action-specific parameters based on param_source
+    if (strcmp(action_type, "GPIO_SET") == 0) {
         rule.action = ACTION_GPIO_SET;
-        rule.params.gpio.pin = atoi(tokens[7]);
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index) {
+            rule.params.gpio.pin = atoi(tokens[param_start_index]);
+        }
 
-    } else if (strcmp(action_type, "GPIO_CLEAR") == 0 && token_count >= 8) {
+    } else if (strcmp(action_type, "GPIO_CLEAR") == 0) {
         rule.action = ACTION_GPIO_CLEAR;
-        rule.params.gpio.pin = atoi(tokens[7]);
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index) {
+            rule.params.gpio.pin = atoi(tokens[param_start_index]);
+        }
 
-    } else if (strcmp(action_type, "GPIO_TOGGLE") == 0 && token_count >= 8) {
+    } else if (strcmp(action_type, "GPIO_TOGGLE") == 0) {
         rule.action = ACTION_GPIO_TOGGLE;
-        rule.params.gpio.pin = atoi(tokens[7]);
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index) {
+            rule.params.gpio.pin = atoi(tokens[param_start_index]);
+        }
 
-    } else if (strcmp(action_type, "PWM_SET") == 0 && token_count >= 9) {
+    } else if (strcmp(action_type, "PWM_SET") == 0) {
         rule.action = ACTION_PWM_SET;
-        rule.params.pwm.pin = atoi(tokens[7]);
-        rule.params.pwm.duty = atoi(tokens[8]);
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index + 1) {
+            rule.params.pwm.pin = atoi(tokens[param_start_index]);
+            rule.params.pwm.duty = atoi(tokens[param_start_index + 1]);
+        }
 
-    } else if (strcmp(action_type, "NEOPIXEL_COLOR") == 0 && token_count >= 11) {
+    } else if (strcmp(action_type, "NEOPIXEL") == 0) {
         rule.action = ACTION_NEOPIXEL_COLOR;
-        rule.params.neopixel.r = atoi(tokens[7]);
-        rule.params.neopixel.g = atoi(tokens[8]);
-        rule.params.neopixel.b = atoi(tokens[9]);
-        rule.params.neopixel.brightness = atoi(tokens[10]);
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index + 3) {
+            rule.params.neopixel.r = atoi(tokens[param_start_index]);
+            rule.params.neopixel.g = atoi(tokens[param_start_index + 1]);
+            rule.params.neopixel.b = atoi(tokens[param_start_index + 2]);
+            rule.params.neopixel.brightness = atoi(tokens[param_start_index + 3]);
+        }
 
     } else if (strcmp(action_type, "NEOPIXEL_OFF") == 0) {
         rule.action = ACTION_NEOPIXEL_OFF;
 
-    } else if (strcmp(action_type, "CAN_SEND_PERIODIC") == 0 && token_count >= 10) {
+    } else if (strcmp(action_type, "CAN_SEND") == 0) {
+        rule.action = ACTION_CAN_SEND;
+        if (token_count > param_start_index + 1) {
+            rule.params.can_send.can_id = strtoul(tokens[param_start_index], nullptr, 16);
+            // Parse data bytes from tokens[param_start_index + 1] (comma-separated)
+            const char* data_str = tokens[param_start_index + 1];
+            rule.params.can_send.length = 0;
+            // TODO: Parse comma-separated data bytes
+        }
+
+    } else if (strcmp(action_type, "CAN_SEND_PERIODIC") == 0) {
         rule.action = ACTION_CAN_SEND_PERIODIC;
-        rule.params.can_send.can_id = strtoul(tokens[7], nullptr, 16);
-        // Parse data bytes from tokens[8] (comma-separated)
-        const char* data_str = tokens[8];
-        rule.params.can_send.length = 0;
-        // TODO: Parse comma-separated data bytes
-        // Parse interval
-        rule.params.can_send.interval_ms = atoi(tokens[9]);
+        if (token_count > param_start_index + 2) {
+            rule.params.can_send.can_id = strtoul(tokens[param_start_index], nullptr, 16);
+            // Parse data bytes from tokens[param_start_index + 1] (comma-separated)
+            const char* data_str = tokens[param_start_index + 1];
+            rule.params.can_send.length = 0;
+            // TODO: Parse comma-separated data bytes
+            // Parse interval
+            rule.params.can_send.interval_ms = atoi(tokens[param_start_index + 2]);
+        }
 
     } else {
         // Unsupported action type
@@ -239,7 +281,7 @@ uint8_t ActionManager::parse_and_add_rule(const char* command_str) {
     return add_rule(rule);
 }
 
-bool ActionManager::remove_rule(uint8_t rule_id) {
+bool ActionManagerBase::remove_rule(uint8_t rule_id) {
     int8_t index = find_rule_index(rule_id);
     if (index < 0) {
         return false;
@@ -254,7 +296,7 @@ bool ActionManager::remove_rule(uint8_t rule_id) {
     return true;
 }
 
-bool ActionManager::set_rule_enabled(uint8_t rule_id, bool enabled) {
+bool ActionManagerBase::set_rule_enabled(uint8_t rule_id, bool enabled) {
     int8_t index = find_rule_index(rule_id);
     if (index < 0) {
         return false;
@@ -268,7 +310,7 @@ bool ActionManager::set_rule_enabled(uint8_t rule_id, bool enabled) {
     return true;
 }
 
-const ActionRule* ActionManager::get_rule(uint8_t rule_id) const {
+const ActionRule* ActionManagerBase::get_rule(uint8_t rule_id) const {
     int8_t index = find_rule_index(rule_id);
     if (index < 0) {
         return nullptr;
@@ -277,7 +319,7 @@ const ActionRule* ActionManager::get_rule(uint8_t rule_id) const {
     return &rules_[index];
 }
 
-uint8_t ActionManager::get_rule_count() const {
+uint8_t ActionManagerBase::get_rule_count() const {
     uint8_t count = 0;
     for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
         if (rules_[i].id != 0) {
@@ -287,12 +329,12 @@ uint8_t ActionManager::get_rule_count() const {
     return count;
 }
 
-void ActionManager::clear_all_rules() {
+void ActionManagerBase::clear_all_rules() {
     memset(rules_, 0, sizeof(rules_));
     next_rule_id_ = 1;
 }
 
-void ActionManager::list_rules(void (*callback)(const ActionRule& rule)) const {
+void ActionManagerBase::list_rules(void (*callback)(const ActionRule& rule)) const {
     if (!callback) {
         return;
     }
@@ -304,7 +346,7 @@ void ActionManager::list_rules(void (*callback)(const ActionRule& rule)) const {
     }
 }
 
-void ActionManager::print_rules() const {
+void ActionManagerBase::print_rules() const {
     for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
         if (rules_[i].id == 0) {
             continue;  // Skip empty slots
@@ -313,14 +355,22 @@ void ActionManager::print_rules() const {
         const ActionRule& rule = rules_[i];
 
         // Format: ACTION;ID;ENABLED;CAN_ID;ACTION_TYPE;DETAILS
-        char buffer[128];
-        snprintf(buffer, sizeof(buffer), "ACTION;%d;%s;0x%lX;%s",
-            rule.id,
-            rule.enabled ? "true" : "false",
-            (unsigned long)rule.can_id,
-            action_type_to_string(rule.action));
+        Serial.print("ACTION;");
+        Serial.print(rule.id);
+        Serial.print(";");
+        Serial.print(rule.enabled ? "true" : "false");
+        Serial.print(";");
 
-        Serial.print(buffer);
+        // Display CAN ID - use ANY for wildcard (mask = 0x000)
+        if (rule.can_id_mask == 0x000) {
+            Serial.print("ANY");  // Wildcard - matches any CAN ID
+        } else {
+            Serial.print("0x");
+            Serial.print(rule.can_id, HEX);
+        }
+
+        Serial.print(";");
+        Serial.print(action_type_to_string(rule.action));
 
         // Add action-specific parameters
         switch (rule.action) {
@@ -368,7 +418,7 @@ void ActionManager::print_rules() const {
 // Rule Matching
 // ============================================================================
 
-bool ActionManager::matches_rule(const CANMessage& message, const ActionRule& rule) const {
+bool ActionManagerBase::matches_rule(const CANMessage& message, const ActionRule& rule) const {
     // Check CAN ID match with mask
     if ((message.id & rule.can_id_mask) != (rule.can_id & rule.can_id_mask)) {
         return false;
@@ -393,26 +443,68 @@ bool ActionManager::matches_rule(const CANMessage& message, const ActionRule& ru
 }
 
 // ============================================================================
-// Action Execution
+// Action Execution Dispatcher
 // ============================================================================
 
-bool ActionManager::execute_action(const ActionRule& rule, const CANMessage& message) {
+bool ActionManagerBase::execute_action(const ActionRule& rule, const CANMessage& message) {
+    // Determine if we should extract parameters from CAN data or use fixed rule parameters
+    bool use_can_data = (rule.param_source == PARAM_FROM_CAN_DATA);
+
     switch (rule.action) {
         case ACTION_GPIO_SET:
         case ACTION_GPIO_CLEAR:
-        case ACTION_GPIO_TOGGLE:
-            return execute_gpio_action(rule.action, rule.params.gpio.pin);
+        case ACTION_GPIO_TOGGLE: {
+            uint8_t pin;
+            if (use_can_data) {
+                const ActionDefinition* def = get_action_definition(rule.action);
+                if (def && def->param_count >= 1) {
+                    pin = extract_uint8(message.data + rule.param_data_offset, def->param_map[0]);
+                } else {
+                    return false;  // No definition available
+                }
+            } else {
+                pin = rule.params.gpio.pin;
+            }
+            return execute_gpio_action(rule.action, pin);
+        }
 
-        case ACTION_PWM_SET:
-            return execute_pwm_action(rule.params.pwm.pin, rule.params.pwm.duty);
+        case ACTION_PWM_SET: {
+            uint8_t pin, duty;
+            if (use_can_data) {
+                const ActionDefinition* def = get_action_definition(rule.action);
+                if (def && def->param_count >= 2) {
+                    pin = extract_uint8(message.data + rule.param_data_offset, def->param_map[0]);
+                    duty = extract_uint8(message.data + rule.param_data_offset, def->param_map[1]);
+                } else {
+                    return false;
+                }
+            } else {
+                pin = rule.params.pwm.pin;
+                duty = rule.params.pwm.duty;
+            }
+            return execute_pwm_action(pin, duty);
+        }
 
-        case ACTION_NEOPIXEL_COLOR:
-            return execute_neopixel_action(
-                rule.params.neopixel.r,
-                rule.params.neopixel.g,
-                rule.params.neopixel.b,
-                rule.params.neopixel.brightness
-            );
+        case ACTION_NEOPIXEL_COLOR: {
+            uint8_t r, g, b, brightness;
+            if (use_can_data) {
+                const ActionDefinition* def = get_action_definition(rule.action);
+                if (def && def->param_count >= 4) {
+                    r = extract_uint8(message.data + rule.param_data_offset, def->param_map[0]);
+                    g = extract_uint8(message.data + rule.param_data_offset, def->param_map[1]);
+                    b = extract_uint8(message.data + rule.param_data_offset, def->param_map[2]);
+                    brightness = extract_uint8(message.data + rule.param_data_offset, def->param_map[3]);
+                } else {
+                    return false;
+                }
+            } else {
+                r = rule.params.neopixel.r;
+                g = rule.params.neopixel.g;
+                b = rule.params.neopixel.b;
+                brightness = rule.params.neopixel.brightness;
+            }
+            return execute_neopixel_action(r, g, b, brightness);
+        }
 
         case ACTION_NEOPIXEL_OFF:
             return execute_neopixel_action(0, 0, 0, 0);
@@ -438,70 +530,11 @@ bool ActionManager::execute_action(const ActionRule& rule, const CANMessage& mes
     }
 }
 
-bool ActionManager::execute_gpio_action(ActionType type, uint8_t pin) {
-    // Validate pin number (basic check)
-    if (pin >= platform_capabilities.gpio_count) {
-        return false;
-    }
+// ============================================================================
+// Platform-Agnostic CAN Send
+// ============================================================================
 
-    switch (type) {
-        case ACTION_GPIO_SET:
-            pinMode(pin, OUTPUT);
-            digitalWrite(pin, HIGH);
-            return true;
-
-        case ACTION_GPIO_CLEAR:
-            pinMode(pin, OUTPUT);
-            digitalWrite(pin, LOW);
-            return true;
-
-        case ACTION_GPIO_TOGGLE:
-            pinMode(pin, OUTPUT);
-            digitalWrite(pin, !digitalRead(pin));
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-bool ActionManager::execute_pwm_action(uint8_t pin, uint8_t duty) {
-    if (!platform_capabilities.has_capability(CAP_GPIO_PWM)) {
-        return false;
-    }
-
-    if (pin >= platform_capabilities.gpio_count) {
-        return false;
-    }
-
-    pinMode(pin, OUTPUT);
-    analogWrite(pin, duty);
-    return true;
-}
-
-bool ActionManager::execute_neopixel_action(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
-#ifdef PLATFORM_SAMD51
-    if (!platform_capabilities.has_capability(CAP_NEOPIXEL)) {
-        return false;
-    }
-
-    // Use NeoPixel from samd51_can if available
-    // For now, just set the built-in NeoPixel directly
-    if (platform_capabilities.neopixel_available) {
-        Adafruit_NeoPixel pixel(1, platform_capabilities.neopixel_pin, NEO_GRB + NEO_KHZ800);
-        pixel.begin();
-        if (brightness > 0) {
-            pixel.setBrightness(brightness);
-        }
-        pixel.setPixelColor(0, pixel.Color(r, g, b));
-        pixel.show();
-        return true;
-    }
-#endif
-    return false;
-}
-
-bool ActionManager::execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length) {
+bool ActionManagerBase::execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length) {
     if (!can_interface_ || !can_interface_->is_ready()) {
         return false;
     }
@@ -517,72 +550,16 @@ bool ActionManager::execute_can_send_action(uint32_t can_id, const uint8_t* data
     return can_interface_->send_message(msg);
 }
 
-bool ActionManager::execute_adc_read_send_action(uint8_t adc_pin, uint32_t response_id) {
-    if (!platform_capabilities.has_capability(CAP_GPIO_ANALOG)) {
-        return false;
-    }
-
-    // Read ADC value
-    int adc_value = analogRead(adc_pin);
-
-    // Send as CAN message (2 bytes, big-endian)
-    uint8_t data[2];
-    data[0] = (adc_value >> 8) & 0xFF;
-    data[1] = adc_value & 0xFF;
-
-    return execute_can_send_action(response_id, data, 2);
-}
-
 // ============================================================================
-// Helper Methods
+// Persistence (Delegates to Platform Implementation)
 // ============================================================================
 
-int8_t ActionManager::find_empty_slot() const {
-    for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
-        if (rules_[i].id == 0) {
-            return i;
-        }
-    }
-    return -1;  // No empty slots
+bool ActionManagerBase::save_rules() {
+    return save_rules_impl();
 }
 
-int8_t ActionManager::find_rule_index(uint8_t rule_id) const {
-    for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
-        if (rules_[i].id == rule_id) {
-            return i;
-        }
-    }
-    return -1;  // Not found
-}
-
-// ============================================================================
-// Persistence (Stub - to be implemented)
-// ============================================================================
-
-bool ActionManager::save_rules() {
-#ifdef PLATFORM_SAMD51
-    // Count active rules
-    uint8_t active_count = 0;
-    for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
-        if (rules_[i].id != 0) {
-            active_count++;
-        }
-    }
-
-    // Save to Flash
-    return save_rules_to_flash(rules_, active_count);
-#elif defined(PLATFORM_RP2040)
-    // TODO: Implement RP2040 flash storage
-    return false;
-#else
-    return false;
-#endif
-}
-
-uint8_t ActionManager::load_rules() {
-#ifdef PLATFORM_SAMD51
-    // Try to load rules from Flash
-    uint8_t loaded = load_rules_from_flash(rules_, MAX_ACTION_RULES);
+uint8_t ActionManagerBase::load_rules() {
+    uint8_t loaded = load_rules_impl();
 
     // Update next_rule_id to be higher than any loaded rule ID
     if (loaded > 0) {
@@ -596,52 +573,26 @@ uint8_t ActionManager::load_rules() {
     }
 
     return loaded;
-#elif defined(PLATFORM_RP2040)
-    // TODO: Implement RP2040 flash loading
-    return 0;
-#else
-    return 0;
-#endif
 }
 
 // ============================================================================
-// Helper Functions
+// Helper Methods
 // ============================================================================
 
-const char* action_type_to_string(ActionType type) {
-    switch (type) {
-        case ACTION_NONE: return "NONE";
-        case ACTION_GPIO_SET: return "GPIO_SET";
-        case ACTION_GPIO_CLEAR: return "GPIO_CLEAR";
-        case ACTION_GPIO_TOGGLE: return "GPIO_TOGGLE";
-        case ACTION_CAN_SEND: return "CAN_SEND";
-        case ACTION_CAN_SEND_PERIODIC: return "CAN_SEND_PERIODIC";
-        case ACTION_PWM_SET: return "PWM_SET";
-        case ACTION_NEOPIXEL_COLOR: return "NEOPIXEL_COLOR";
-        case ACTION_NEOPIXEL_OFF: return "NEOPIXEL_OFF";
-        default: return "UNKNOWN";
+int8_t ActionManagerBase::find_empty_slot() const {
+    for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
+        if (rules_[i].id == 0) {
+            return i;
+        }
     }
+    return -1;  // No empty slots
 }
 
-bool is_action_supported(ActionType type) {
-    switch (type) {
-        case ACTION_GPIO_SET:
-        case ACTION_GPIO_CLEAR:
-        case ACTION_GPIO_TOGGLE:
-            return platform_capabilities.has_capability(CAP_GPIO_DIGITAL);
-
-        case ACTION_CAN_SEND:
-        case ACTION_CAN_SEND_PERIODIC:
-            return platform_capabilities.has_capability(CAP_CAN_SEND);
-
-        case ACTION_PWM_SET:
-            return platform_capabilities.has_capability(CAP_GPIO_PWM);
-
-        case ACTION_NEOPIXEL_COLOR:
-        case ACTION_NEOPIXEL_OFF:
-            return platform_capabilities.has_capability(CAP_NEOPIXEL);
-
-        default:
-            return false;
+int8_t ActionManagerBase::find_rule_index(uint8_t rule_id) const {
+    for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
+        if (rules_[i].id == rule_id) {
+            return i;
+        }
     }
+    return -1;  // Not found
 }

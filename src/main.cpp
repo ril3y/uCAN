@@ -2,13 +2,13 @@
 #include "hal/can_factory.h"
 #include "hal/platform_config.h"
 #include "capabilities/board_capabilities.h"
-#include "actions/action_manager.h"
+#include "actions/action_manager_factory.h"
 
 // Global CAN interface instance
 CANInterface* can_interface = nullptr;
 
-// Global action manager instance
-ActionManager action_manager;
+// Global action manager instance (polymorphic pointer to platform-specific implementation)
+ActionManagerBase* action_manager = nullptr;
 
 // Command buffer for serial input
 static char command_buffer[256];
@@ -32,8 +32,10 @@ void handle_command(const char* command);
 void handle_send_command(const char* params);
 void handle_config_command(const char* params);
 void handle_get_command(const char* params);
+void handle_set_command(const char* params);
 void handle_control_command(const char* params);
 void handle_action_command(const char* params);
+void handle_custom_command(const char* params);
 void send_status(const char* type, const char* message, const char* details = nullptr);
 void send_error(CANError error, const char* description);
 void send_stats();
@@ -70,9 +72,38 @@ void setup() {
     while (1) delay(1000);  // Halt on error
   }
 
+  // Create platform-specific action manager
+  action_manager = ActionManagerFactory::create();
+  if (!action_manager) {
+    send_status("ERROR", "Failed to create action manager");
+    while (1) delay(1000);  // Halt on error
+  }
+
   // Initialize action manager
-  if (action_manager.initialize(can_interface)) {
-    send_status("INFO", "Action manager initialized");
+  if (action_manager->initialize(can_interface)) {
+    char details[128];
+    snprintf(details, sizeof(details), "%s action manager", ActionManagerFactory::get_platform_name());
+    send_status("INFO", "Action manager initialized", details);
+
+    // Try to load rules from persistent storage first
+    uint8_t loaded = action_manager->load_rules();
+    if (loaded > 0) {
+      char details[64];
+      snprintf(details, sizeof(details), "Loaded %d rule(s) from storage", loaded);
+      send_status("INFO", "Rules restored", details);
+    } else {
+      // No saved rules, load platform-specific defaults if available
+#ifdef PLATFORM_SAMD51
+      loaded = load_samd51_default_rules(action_manager);
+      if (loaded > 0) {
+        char details[64];
+        snprintf(details, sizeof(details), "Loaded %d default rule(s)", loaded);
+        send_status("INFO", "Default rules loaded", details);
+        // Save defaults to flash for next boot
+        action_manager->save_rules();
+      }
+#endif
+    }
   } else {
     send_status("WARNING", "Action manager initialization failed");
   }
@@ -90,10 +121,15 @@ void loop() {
   
   // Process CAN messages
   process_can_messages();
-  
+
   // Handle serial commands
   process_serial_input();
-  
+
+  // Update periodic actions
+  if (action_manager) {
+    action_manager->update_periodic();
+  }
+
   // Send periodic statistics
   if (millis() - last_stats_time >= STATS_INTERVAL) {
     send_stats();
@@ -144,7 +180,9 @@ void process_can_messages() {
     Serial.println();
 
     // Check and execute any matching action rules
-    action_manager.check_and_execute(message);
+    if (action_manager) {
+      action_manager->check_and_execute(message);
+    }
   }
 }
 
@@ -171,10 +209,14 @@ void handle_command(const char* command) {
     handle_config_command(command + 7);
   } else if (strncmp(command, "get:", 4) == 0) {
     handle_get_command(command + 4);
+  } else if (strncmp(command, "set:", 4) == 0) {
+    handle_set_command(command + 4);
   } else if (strncmp(command, "control:", 8) == 0) {
     handle_control_command(command + 8);
   } else if (strncmp(command, "action:", 7) == 0) {
     handle_action_command(command + 7);
+  } else if (strncmp(command, "custom:", 7) == 0) {
+    handle_custom_command(command + 7);
   }
   // Silently ignore unknown commands for protocol compatibility
 }
@@ -259,17 +301,6 @@ void handle_config_command(const char* params) {
     uint32_t filter = strtoul(value, NULL, 16);
     can_interface->set_filter(filter, 0x7FF);  // Standard ID mask
     send_status("CONFIG", "Filter set", value);
-  } else if (strcmp(param, "visual") == 0) {
-    // Handle visual feedback configuration
-    if (strcmp(value, "on") == 0) {
-      can_interface->set_visual_feedback_enabled(true);
-      send_status("CONFIG", "Visual feedback enabled");
-    } else if (strcmp(value, "off") == 0) {
-      can_interface->set_visual_feedback_enabled(false);
-      send_status("CONFIG", "Visual feedback disabled");
-    } else {
-      send_error(CAN_ERROR_CONFIG_ERROR, "Invalid visual config (use 'on' or 'off')");
-    }
   }
 }
 
@@ -294,11 +325,6 @@ void handle_get_command(const char* param) {
     
   } else if (strcmp(param, "stats") == 0) {
     send_stats();
-  } else if (strcmp(param, "visual") == 0) {
-    // Get visual feedback status
-    bool enabled = can_interface->is_visual_feedback_enabled();
-    const char* status = enabled ? "enabled" : "disabled";
-    send_status("INFO", "Visual feedback", status);
 
   } else if (strcmp(param, "capabilities") == 0) {
     // Send platform capabilities as JSON
@@ -311,6 +337,50 @@ void handle_get_command(const char* param) {
   } else if (strcmp(param, "actions") == 0) {
     // Send supported action types
     send_supported_actions();
+
+  } else if (strcmp(param, "name") == 0) {
+    // Send device name
+    Serial.print("NAME;");
+    Serial.println(get_device_name());
+
+  } else if (strcmp(param, "commands") == 0) {
+    // Send custom commands in JSON format
+    if (action_manager) {
+      action_manager->get_custom_commands().print_commands();
+    }
+
+  } else if (strcmp(param, "actiondefs") == 0) {
+    // Send action definitions for UI discovery
+    print_all_action_definitions();
+
+  } else if (strncmp(param, "actiondef:", 10) == 0) {
+    // Get specific action definition by action type number
+    uint8_t action_type = atoi(param + 10);
+    const ActionDefinition* def = get_action_definition((ActionType)action_type);
+    if (def) {
+      print_action_definition_json(def);
+    } else {
+      send_status("ERROR", "Action definition not found");
+    }
+  }
+}
+
+void handle_set_command(const char* params) {
+  // Parse format: PARAM:VALUE
+  char* colon_pos = strchr(params, ':');
+  if (!colon_pos) {
+    return;
+  }
+
+  *colon_pos = '\0';
+  const char* param = params;
+  const char* value = colon_pos + 1;
+
+  if (strcmp(param, "name") == 0) {
+    // Set device name
+    set_device_name(value);
+  } else {
+    // Unknown parameter, silently ignore
   }
 }
 
@@ -418,99 +488,76 @@ void send_heartbeat() {
 // ============================================================================
 
 void handle_action_command(const char* params) {
+  if (!action_manager) {
+    send_status("ERROR", "Action manager not initialized");
+    return;
+  }
+
   // Parse action subcommands
   if (strncmp(params, "add:", 4) == 0) {
-    // Parse: add:ID:CAN_ID:CAN_MASK:DATA:DATA_MASK:ACTION_TYPE:PARAMS
-    // Simplified for now: add:ID:CAN_ID:::ACTION_TYPE:PARAM
-    char params_copy[128];
-    strncpy(params_copy, params + 4, sizeof(params_copy) - 1);
-    params_copy[sizeof(params_copy) - 1] = '\0';
-
-    // Simple parser for: ID:CAN_ID:::GPIO_TOGGLE:PIN
-    char* tokens[8];
-    uint8_t token_count = 0;
-    char* ptr = params_copy;
-
-    while (token_count < 8 && *ptr) {
-      tokens[token_count++] = ptr;
-      char* next = strchr(ptr, ':');
-      if (next) {
-        *next = '\0';
-        ptr = next + 1;
-      } else {
-        break;
-      }
-    }
-
-    if (token_count < 4) {
-      send_status("ERROR", "Invalid action format");
-      return;
-    }
-
-    ActionRule rule;
-    memset(&rule, 0, sizeof(rule));
-
-    rule.id = atoi(tokens[0]);
-    rule.can_id = strtoul(tokens[1], nullptr, 16);
-    rule.can_id_mask = 0x7FF;  // Default standard ID mask
-    rule.enabled = true;
-
-    // Parse action type
-    if (token_count >= 4) {
-      if (strcmp(tokens[3], "GPIO_TOGGLE") == 0 && token_count >= 5) {
-        rule.action = ACTION_GPIO_TOGGLE;
-        rule.params.gpio.pin = atoi(tokens[4]);
-      } else if (strcmp(tokens[3], "GPIO_SET") == 0 && token_count >= 5) {
-        rule.action = ACTION_GPIO_SET;
-        rule.params.gpio.pin = atoi(tokens[4]);
-      } else if (strcmp(tokens[3], "GPIO_CLEAR") == 0 && token_count >= 5) {
-        rule.action = ACTION_GPIO_CLEAR;
-        rule.params.gpio.pin = atoi(tokens[4]);
-      } else {
-        send_status("ERROR", "Unsupported action type");
-        return;
-      }
-    }
-
-    uint8_t added_id = action_manager.add_rule(rule);
+    // Use ActionManager's parser
+    uint8_t added_id = action_manager->parse_and_add_rule(params + 4);
     if (added_id > 0) {
-      char details[32];
-      snprintf(details, sizeof(details), "Rule %d added", added_id);
-      send_status("INFO", "Action added", details);
+      char message[64];
+      snprintf(message, sizeof(message), "Rule added with ID: %d", added_id);
+      send_status("INFO", message);
     } else {
       send_status("ERROR", "Failed to add action");
     }
 
-  } else if (strncmp(params, "remove:", 7) == 0) {
-    uint8_t rule_id = atoi(params + 7);
-    if (action_manager.remove_rule(rule_id)) {
+  } else if (strncmp(params, "remove:", 7) == 0 || strncmp(params, "delete:", 7) == 0) {
+    // Support both remove and delete commands
+    const char* id_str = (strncmp(params, "remove:", 7) == 0) ? (params + 7) : (params + 7);
+    uint8_t rule_id = atoi(id_str);
+    if (action_manager->remove_rule(rule_id)) {
       send_status("INFO", "Action removed");
     } else {
       send_status("ERROR", "Action not found");
     }
 
+  } else if (strncmp(params, "edit:", 5) == 0) {
+    // Edit existing rule: action:edit:ID:CAN_ID:MASK:DATA:DMASK:LEN:ACTION:PARAM_SOURCE:PARAMS
+    // First remove the old rule, then add the new one with the same ID
+    char* colon_pos = strchr(params + 5, ':');
+    if (!colon_pos) {
+      send_status("ERROR", "Invalid edit format");
+      return;
+    }
+
+    uint8_t rule_id = atoi(params + 5);
+
+    // Remove the existing rule
+    if (!action_manager->remove_rule(rule_id)) {
+      send_status("ERROR", "Rule not found");
+      return;
+    }
+
+    // Add the new rule with the same ID
+    // Format the add command string by prepending the ID
+    char add_params[256];
+    snprintf(add_params, sizeof(add_params), "%d%s", rule_id, colon_pos);
+
+    uint8_t added_id = action_manager->parse_and_add_rule(add_params);
+    if (added_id > 0) {
+      char message[64];
+      snprintf(message, sizeof(message), "Rule %d updated", rule_id);
+      send_status("INFO", message);
+    } else {
+      send_status("ERROR", "Failed to update rule");
+    }
+
   } else if (strcmp(params, "list") == 0) {
-    uint8_t count = action_manager.get_rule_count();
+    uint8_t count = action_manager->get_rule_count();
     char details[32];
     snprintf(details, sizeof(details), "%d rules active", count);
     send_status("INFO", "Actions", details);
 
-    // List each rule
-    action_manager.list_rules([](const ActionRule& rule) {
-      Serial.print("ACTION;");
-      Serial.print(rule.id);
-      Serial.print(";0x");
-      Serial.print(rule.id, HEX);
-      Serial.print(";");
-      Serial.print(action_type_to_string(rule.action));
-      Serial.print(";");
-      Serial.print(rule.enabled ? "EN" : "DIS");
-      Serial.println();
-    });
+    // Let ActionManager handle the formatting
+    action_manager->print_rules();
 
   } else if (strncmp(params, "enable:", 7) == 0) {
     uint8_t rule_id = atoi(params + 7);
-    if (action_manager.set_rule_enabled(rule_id, true)) {
+    if (action_manager->set_rule_enabled(rule_id, true)) {
       send_status("INFO", "Action enabled");
     } else {
       send_status("ERROR", "Action not found");
@@ -518,14 +565,47 @@ void handle_action_command(const char* params) {
 
   } else if (strncmp(params, "disable:", 8) == 0) {
     uint8_t rule_id = atoi(params + 8);
-    if (action_manager.set_rule_enabled(rule_id, false)) {
+    if (action_manager->set_rule_enabled(rule_id, false)) {
       send_status("INFO", "Action disabled");
     } else {
       send_status("ERROR", "Action not found");
     }
 
   } else if (strcmp(params, "clear") == 0) {
-    action_manager.clear_all_rules();
+    action_manager->clear_all_rules();
     send_status("INFO", "All actions cleared");
+  }
+}
+
+// ============================================================================
+// Custom Command Handler
+// ============================================================================
+
+void handle_custom_command(const char* params) {
+  if (!action_manager) {
+    send_status("ERROR", "Action manager not initialized");
+    return;
+  }
+
+  // Parse format: COMMAND_NAME:PARAM1:PARAM2:...
+  // Example: neopixel:255:0:0:128
+  char buffer[256];
+  strncpy(buffer, params, sizeof(buffer) - 1);
+  buffer[sizeof(buffer) - 1] = '\0';
+
+  char* colon = strchr(buffer, ':');
+  const char* command_name = buffer;
+  const char* command_params = "";
+
+  if (colon) {
+    *colon = '\0';
+    command_params = colon + 1;
+  }
+
+  // Execute custom command
+  if (action_manager->get_custom_commands().execute_command(command_name, command_params)) {
+    send_status("INFO", "Custom command executed", command_name);
+  } else {
+    send_status("ERROR", "Custom command failed or not found", command_name);
   }
 }
