@@ -362,4 +362,42 @@ void SAMD51CAN::neopixel_power_off() {
     digitalWrite(NEOPIXEL_POWER_PIN, LOW);
 }
 
+bool SAMD51CAN::set_loopback_mode(bool enabled) {
+    if (!initialized_) {
+        return false;
+    }
+
+    // Access SAMD51 CAN controller registers directly
+    // The Adafruit CAN library doesn't expose loopback mode
+    // We need to access the hardware directly via CMSIS
+
+    // CAN0 is the CAN peripheral on SAMD51
+    // CCCR = CAN Control and Configuration Register
+    // TEST = CAN Test Register
+
+    if (enabled) {
+        // Enable test mode
+        CAN0->CCCR.bit.TEST = 1;
+        // Wait for test mode to be enabled
+        while (!CAN0->CCCR.bit.TEST);
+
+        // Enable internal loopback
+        CAN0->TEST.bit.LBCK = 1;
+
+        // Update config
+        config_.loopback_mode = true;
+    } else {
+        // Disable internal loopback
+        CAN0->TEST.bit.LBCK = 0;
+
+        // Disable test mode
+        CAN0->CCCR.bit.TEST = 0;
+
+        // Update config
+        config_.loopback_mode = false;
+    }
+
+    return true;
+}
+
 #endif // PLATFORM_SAMD51

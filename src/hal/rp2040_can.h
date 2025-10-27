@@ -31,6 +31,7 @@ public:
     bool set_filter(uint32_t filter_id, uint32_t mask) override;
     const char* get_platform_name() override;
     const char* get_version() override;
+    bool set_loopback_mode(bool enabled) override;
 
 protected:
     uint32_t get_timestamp_ms() override;

@@ -143,6 +143,13 @@ public:
     virtual const char* get_version() = 0;
 
     /**
+     * Enable or disable CAN loopback mode dynamically
+     * @param enabled true to enable loopback, false to disable
+     * @return true if mode change successful
+     */
+    virtual bool set_loopback_mode(bool enabled) = 0;
+
+    /**
      * Visual feedback for TX activity (optional, platform-specific)
      * Default implementation does nothing for platforms without visual indicators
      */

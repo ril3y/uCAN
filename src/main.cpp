@@ -301,6 +301,23 @@ void handle_config_command(const char* params) {
     uint32_t filter = strtoul(value, NULL, 16);
     can_interface->set_filter(filter, 0x7FF);  // Standard ID mask
     send_status("CONFIG", "Filter set", value);
+  } else if (strcmp(param, "mode") == 0) {
+    // Handle loopback mode configuration
+    if (strcmp(value, "loopback") == 0) {
+      if (can_interface->set_loopback_mode(true)) {
+        send_status("CONFIG", "Loopback mode enabled");
+      } else {
+        send_status("ERROR", "Loopback mode not supported on this platform");
+      }
+    } else if (strcmp(value, "normal") == 0) {
+      if (can_interface->set_loopback_mode(false)) {
+        send_status("CONFIG", "Normal mode enabled");
+      } else {
+        send_status("ERROR", "Mode change failed");
+      }
+    } else {
+      send_status("ERROR", "Invalid mode (use 'loopback' or 'normal')");
+    }
   }
 }
 

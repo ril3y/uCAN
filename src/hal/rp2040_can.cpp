@@ -224,4 +224,23 @@ void RP2040CAN::handle_error(uint32_t notify) {
     }
 }
 
+bool RP2040CAN::set_loopback_mode(bool enabled) {
+    if (!initialized_ || !acan_instance_) {
+        return false;
+    }
+
+    // TODO: Investigate if ACAN2040/can2040 supports loopback mode
+    // The can2040 library may support loopback via configuration
+    // but ACAN2040 wrapper might not expose this functionality
+
+    // For now, return false to indicate this feature is not yet implemented
+    // This prevents compilation errors and allows the rest of the system to work
+
+    // Note: When implementing, loopback mode would typically be set during
+    // initialization via can2040 configuration, not dynamically changed
+
+    config_.loopback_mode = enabled;  // Update config even if not supported
+    return false;  // Feature not yet implemented
+}
+
 #endif // PLATFORM_RP2040
