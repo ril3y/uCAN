@@ -366,61 +366,113 @@ void ActionManagerBase::print_rules() const {
 
         const ActionRule& rule = rules_[i];
 
-        // Format: ACTION;ID;ENABLED;CAN_ID;ACTION_TYPE;DETAILS
-        Serial.print("ACTION;");
+        // Format: RULE;{ID};{CAN_ID};{MASK};{DATA};{DATA_MASK};{DATA_LEN};{ACTION};{PARAM_SOURCE};{PARAMS...}
+        // This format matches what parse_and_add_rule() expects, allowing copy/paste
+        Serial.print("RULE;");
         Serial.print(rule.id);
-        Serial.print(";");
-        Serial.print(rule.enabled ? "true" : "false");
+        Serial.print(";0x");
+        Serial.print(rule.can_id, HEX);
+        Serial.print(";0x");
+        Serial.print(rule.can_id_mask, HEX);
         Serial.print(";");
 
-        // Display CAN ID - use ANY for wildcard (mask = 0x000)
-        if (rule.can_id_mask == 0x000) {
-            Serial.print("ANY");  // Wildcard - matches any CAN ID
-        } else {
-            Serial.print("0x");
-            Serial.print(rule.can_id, HEX);
+        // DATA field - hex bytes separated by commas (or empty if data_length == 0)
+        if (rule.data_length > 0) {
+            for (uint8_t j = 0; j < rule.data_length; j++) {
+                if (j > 0) Serial.print(",");
+                if (rule.data[j] < 0x10) Serial.print("0");
+                Serial.print(rule.data[j], HEX);
+            }
         }
-
         Serial.print(";");
+
+        // DATA_MASK field - hex bytes separated by commas (or empty if data_length == 0)
+        if (rule.data_length > 0) {
+            for (uint8_t j = 0; j < rule.data_length; j++) {
+                if (j > 0) Serial.print(",");
+                if (rule.data_mask[j] < 0x10) Serial.print("0");
+                Serial.print(rule.data_mask[j], HEX);
+            }
+        }
+        Serial.print(";");
+
+        // DATA_LEN field
+        Serial.print(rule.data_length);
+        Serial.print(";");
+
+        // ACTION field
         Serial.print(action_type_to_string(rule.action));
+        Serial.print(";");
 
-        // Add action-specific parameters
-        switch (rule.action) {
-            case ACTION_GPIO_SET:
-            case ACTION_GPIO_CLEAR:
-            case ACTION_GPIO_TOGGLE:
-                Serial.print(";Pin:");
-                Serial.print(rule.params.gpio.pin);
-                break;
-            case ACTION_PWM_SET:
-                Serial.print(";Pin:");
-                Serial.print(rule.params.pwm.pin);
-                Serial.print(" Duty:");
-                Serial.print(rule.params.pwm.duty);
-                break;
-            case ACTION_NEOPIXEL_COLOR:
-                Serial.print(";R:");
-                Serial.print(rule.params.neopixel.r);
-                Serial.print(" G:");
-                Serial.print(rule.params.neopixel.g);
-                Serial.print(" B:");
-                Serial.print(rule.params.neopixel.b);
-                Serial.print(" Br:");
-                Serial.print(rule.params.neopixel.brightness);
-                break;
-            case ACTION_CAN_SEND:
-            case ACTION_CAN_SEND_PERIODIC:
-                Serial.print(";CAN:0x");
-                Serial.print(rule.params.can_send.can_id, HEX);
-                if (rule.action == ACTION_CAN_SEND_PERIODIC) {
-                    Serial.print(" Int:");
-                    Serial.print(rule.params.can_send.interval_ms);
-                    Serial.print("ms");
-                }
-                break;
-            default:
-                break;
+        // PARAM_SOURCE field
+        Serial.print(param_source_to_string(rule.param_source));
+
+        // PARAMS fields (only if param_source == PARAM_FROM_RULE)
+        if (rule.param_source == PARAM_FROM_RULE) {
+            switch (rule.action) {
+                case ACTION_GPIO_SET:
+                case ACTION_GPIO_CLEAR:
+                case ACTION_GPIO_TOGGLE:
+                    Serial.print(":");
+                    Serial.print(rule.params.gpio.pin);
+                    break;
+
+                case ACTION_PWM_SET:
+                    Serial.print(":");
+                    Serial.print(rule.params.pwm.pin);
+                    Serial.print(":");
+                    Serial.print(rule.params.pwm.duty);
+                    break;
+
+                case ACTION_NEOPIXEL_COLOR:
+                    Serial.print(":");
+                    Serial.print(rule.params.neopixel.r);
+                    Serial.print(":");
+                    Serial.print(rule.params.neopixel.g);
+                    Serial.print(":");
+                    Serial.print(rule.params.neopixel.b);
+                    Serial.print(":");
+                    Serial.print(rule.params.neopixel.brightness);
+                    break;
+
+                case ACTION_CAN_SEND:
+                case ACTION_CAN_SEND_PERIODIC:
+                    Serial.print(":0x");
+                    Serial.print(rule.params.can_send.can_id, HEX);
+                    Serial.print(":");
+                    // CAN data bytes (comma-separated hex)
+                    for (uint8_t j = 0; j < rule.params.can_send.length; j++) {
+                        if (j > 0) Serial.print(",");
+                        if (rule.params.can_send.data[j] < 0x10) Serial.print("0");
+                        Serial.print(rule.params.can_send.data[j], HEX);
+                    }
+                    if (rule.action == ACTION_CAN_SEND_PERIODIC) {
+                        Serial.print(":");
+                        Serial.print(rule.params.can_send.interval_ms);
+                    }
+                    break;
+
+                case ACTION_NEOPIXEL_OFF:
+                case ACTION_BUFFER_CLEAR:
+                    // No parameters
+                    break;
+
+                // Phase 1 actions - not yet supported in print due to union storage
+                // These need fixed parameters from rule definition
+                case ACTION_PWM_CONFIGURE:
+                case ACTION_I2C_WRITE:
+                case ACTION_I2C_READ_BUFFER:
+                case ACTION_GPIO_READ_BUFFER:
+                case ACTION_ADC_READ_BUFFER:
+                case ACTION_BUFFER_SEND:
+                    // TODO: Add when union supports Phase 1 parameters
+                    break;
+
+                default:
+                    break;
+            }
         }
+        // If param_source == PARAM_FROM_CAN_DATA, no parameters are output
 
         Serial.println();
     }

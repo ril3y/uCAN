@@ -2,7 +2,7 @@
 
 #include <Adafruit_SPIFlash.h>
 #include "../actions/action_types.h"
-#include "../actions/action_manager.h"
+#include "../actions/action_manager_base.h"
 #include "board_capabilities.h"
 
 // Flash storage configuration
