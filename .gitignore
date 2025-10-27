@@ -31,3 +31,4 @@ debug_*.py
 test_*.py
 run_*.py
 monitor_debug.py
+cppcheck_report.txt
