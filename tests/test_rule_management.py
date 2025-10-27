@@ -449,9 +449,9 @@ class TestRuleManagement:
         assert len(rule_responses) == 2, \
             f"Expected 2 rules for same CAN ID, got {len(rule_responses)}: {rule_responses}"
 
-        # Verify both rules have CAN ID 0x100
+        # Verify both rules have CAN ID 0x100 (case-insensitive hex matching)
         for rule in rule_responses:
-            assert "0x100" in rule.upper(), f"Rule should have CAN ID 0x100, got: {rule}"
+            assert "0x100" in rule.lower(), f"Rule should have CAN ID 0x100, got: {rule}"
 
         # Cleanup
         send_command("action:clear")

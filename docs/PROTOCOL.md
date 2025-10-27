@@ -45,6 +45,13 @@ The uCAN protocol is a text-based, line-oriented serial protocol for USB-to-CAN 
 - JSON for complex structured data
 - Self-describing via capability queries
 
+**Hexadecimal Format Convention:**
+- Hexadecimal values use `0x` prefix
+- Examples in this document show lowercase hex (e.g., `0x100`, `0xff`)
+- **Implementations MAY output uppercase or lowercase** (case-insensitive)
+- Parsers MUST accept both uppercase and lowercase hex values
+- Arduino firmware outputs uppercase (e.g., `0x100` becomes `0X100`)
+
 ---
 
 ## Connection Setup

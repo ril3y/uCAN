@@ -413,33 +413,33 @@ void ActionManagerBase::print_rules() const {
                 case ACTION_GPIO_SET:
                 case ACTION_GPIO_CLEAR:
                 case ACTION_GPIO_TOGGLE:
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.gpio.pin);
                     break;
 
                 case ACTION_PWM_SET:
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.pwm.pin);
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.pwm.duty);
                     break;
 
                 case ACTION_NEOPIXEL_COLOR:
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.neopixel.r);
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.neopixel.g);
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.neopixel.b);
-                    Serial.print(":");
+                    Serial.print(";");
                     Serial.print(rule.params.neopixel.brightness);
                     break;
 
                 case ACTION_CAN_SEND:
                 case ACTION_CAN_SEND_PERIODIC:
-                    Serial.print(":0x");
+                    Serial.print(";0x");
                     Serial.print(rule.params.can_send.can_id, HEX);
-                    Serial.print(":");
+                    Serial.print(";");
                     // CAN data bytes (comma-separated hex)
                     for (uint8_t j = 0; j < rule.params.can_send.length; j++) {
                         if (j > 0) Serial.print(",");
@@ -447,7 +447,7 @@ void ActionManagerBase::print_rules() const {
                         Serial.print(rule.params.can_send.data[j], HEX);
                     }
                     if (rule.action == ACTION_CAN_SEND_PERIODIC) {
-                        Serial.print(":");
+                        Serial.print(";");
                         Serial.print(rule.params.can_send.interval_ms);
                     }
                     break;
