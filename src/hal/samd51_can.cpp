@@ -367,37 +367,29 @@ bool SAMD51CAN::set_loopback_mode(bool enabled) {
         return false;
     }
 
-    // Access SAMD51 CAN controller registers directly
-    // The Adafruit CAN library doesn't expose loopback mode
-    // We need to access the hardware directly via CMSIS
-
-    // CAN0 is the CAN peripheral on SAMD51
-    // CCCR = CAN Control and Configuration Register
-    // TEST = CAN Test Register
+    // Use the Adafruit CAN library's built-in loopback method
+    // This is cleaner than direct register access and ensures
+    // proper sequencing of mode changes
 
     if (enabled) {
-        // Enable test mode
-        CAN0->CCCR.bit.TEST = 1;
-        // Wait for test mode to be enabled
-        while (!CAN0->CCCR.bit.TEST);
-
-        // Enable internal loopback
-        CAN0->TEST.bit.LBCK = 1;
-
-        // Update config
-        config_.loopback_mode = true;
+        int result = CAN.loopback();
+        if (result == 1) {
+            config_.loopback_mode = true;
+            return true;
+        }
+        return false;
     } else {
-        // Disable internal loopback
-        CAN0->TEST.bit.LBCK = 0;
-
-        // Disable test mode
-        CAN0->CCCR.bit.TEST = 0;
-
-        // Update config
-        config_.loopback_mode = false;
+        // Switch back to normal mode
+        // Need to reinitialize to exit loopback mode
+        CAN.end();
+        if (CAN.begin(config_.bitrate)) {
+            config_.loopback_mode = false;
+            // Re-register the callback
+            CAN.onReceive(can_rx_callback);
+            return true;
+        }
+        return false;
     }
-
-    return true;
 }
 
 #endif // PLATFORM_SAMD51
