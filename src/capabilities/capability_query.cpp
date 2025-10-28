@@ -16,8 +16,8 @@ void send_capabilities_json() {
     // Create JSON document (stack allocated for efficiency)
     JsonDocument doc;
 
-    // Board info
-    doc["board"] = platform_capabilities.board_name;
+    // Board info - use custom device name if set, otherwise default board name
+    doc["board"] = get_device_name();
     doc["chip"] = platform_capabilities.chip_name;
 
     // Clock speed in MHz (calculate from F_CPU define)
