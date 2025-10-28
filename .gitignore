@@ -26,12 +26,11 @@ view_debug.log
 # CSV data files
 *.csv
 
-# Temporary debug/test scripts in root
-debug_*.py
-test_*.py
-run_*.py
-monitor_debug.py
-cppcheck_report.txt
+# Temporary debug/test scripts in root ONLY
+/debug_*.py
+/run_*.py
+/monitor_debug.py
+/cppcheck_report.txt
 
 # Test scripts in root directory ONLY (keep organized tests in tests/ directory)
 /test_*.py
@@ -40,8 +39,9 @@ cppcheck_report.txt
 /*_rules.py
 /simple_test.py
 
-# Allow test files in tests/ directory
+# Allow test files in tests/ directory (redundant but explicit)
 !tests/test_*.py
+!tests/unit/test_*.py
 
 # Temporary documentation
 PHASE*.md
