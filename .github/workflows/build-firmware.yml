@@ -63,7 +63,7 @@ jobs:
         ls -lh .pio/build/${{ matrix.environment }}/
 
     - name: Upload firmware artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: firmware-${{ matrix.environment }}
         path: |
@@ -111,7 +111,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Download all firmware artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: firmware-builds
 
