@@ -742,6 +742,34 @@ Format: `get:name`
 NAME;uCAN_Feather_001
 ```
 
+### set:name - Set Custom Device Name
+
+Format: `set:name:{DEVICE_NAME}`
+
+Sets a custom device name for the board. This allows you to identify individual boards in multi-device setups. The name is limited to 31 characters and will be truncated if longer.
+
+**Example:**
+```
+set:name:uCAN_Vehicle_CAN1
+```
+
+**Response:**
+```
+STATUS;NAME_SET;Device name set to: uCAN_Vehicle_CAN1
+```
+
+**Notes:**
+- Default name is the board name (e.g., "Adafruit Feather M4 CAN")
+- Maximum length: 31 characters (will be truncated if longer)
+- Supports alphanumeric, spaces, underscores, hyphens
+- Setting an empty name (`set:name:`) restores the default board name
+- Name persistence to flash storage is not yet implemented (resets on power cycle)
+
+**Use Cases:**
+- Distinguish between multiple uCAN devices on the same network
+- Label devices by function (e.g., "Engine_CAN", "Chassis_CAN", "Dashboard_CAN")
+- Track device identity in logs and diagnostics
+
 #### get:actiondefs - Get All Action Definitions
 
 Format: `get:actiondefs`

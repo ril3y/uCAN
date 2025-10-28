@@ -33,7 +33,7 @@ void send_capabilities_json() {
 
     // Protocol and firmware versions
     doc["protocol_version"] = "2.0";
-    doc["firmware_version"] = "2.0.0";
+    doc["firmware_version"] = "2.1.0";
 
     // GPIO info as object
     JsonObject gpio = doc["gpio"].to<JsonObject>();
