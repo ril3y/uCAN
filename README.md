@@ -70,9 +70,39 @@ The uCAN Web UI provides a modern, browser-based interface for monitoring and co
 | **ESP32 + SN65HVD230** | ESP32 | External | 🚧 HAL Ready | Implementation needed |
 | **STM32F4 Nucleo** | STM32F4 | Built-in bxCAN | 🚧 HAL Ready | Implementation needed |
 
-### 2. Build & Flash Firmware
+### 2. Install Firmware
 
-#### **For Adafruit Feather M4 CAN** (Recommended)
+#### **Option A: Use Pre-Built Firmware** (Easiest - Recommended)
+
+**Download the latest release:**
+1. Go to [GitHub Releases](https://github.com/ril3y/uCAN/releases)
+2. Download the UF2 file for your board:
+   - `uCAN-feather_m4_can-*.uf2` - Feather M4 CAN (500kbps default)
+   - `uCAN-feather_m4_can_250k-*.uf2` - Feather M4 CAN (250kbps)
+   - `uCAN-feather_m4_can_1m-*.uf2` - Feather M4 CAN (1Mbps)
+   - `uCAN-pico-*.uf2` - Raspberry Pi Pico
+
+**Install on Adafruit Feather M4 CAN:**
+1. Double-click the **RESET** button on the board
+   - The board enters bootloader mode
+   - A drive named **FEATHERBOOT** appears
+2. Drag and drop the `.uf2` file onto the FEATHERBOOT drive
+3. The board automatically reboots with new firmware
+4. A green NeoPixel blink confirms successful boot
+
+**Install on Raspberry Pi Pico:**
+1. Hold the **BOOTSEL** button while plugging in USB
+2. A drive named **RPI-RP2** appears
+3. Drag and drop the `.uf2` file onto the RPI-RP2 drive
+4. The board automatically reboots with new firmware
+
+**No tools or compilation required!**
+
+---
+
+#### **Option B: Build from Source** (For Developers)
+
+**For Adafruit Feather M4 CAN:**
 
 ```bash
 # Install PlatformIO
