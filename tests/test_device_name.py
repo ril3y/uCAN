@@ -6,14 +6,14 @@ Note: Persistence to flash storage is not yet implemented.
 
 Hardware Requirements:
 - Adafruit Feather M4 CAN on COM21 @ 115200 baud
-- No active CAN traffic required
+- Tests automatically clear action rules to minimize CAN traffic interference
 """
 
 import pytest
 
 
 @pytest.mark.hardware
-def test_get_default_name(flush_serial, send_command, wait_for_response):
+def test_get_default_name(clear_rules, flush_serial, send_command, wait_for_response):
     """Test getting the default device name (board name)."""
     flush_serial()
 
@@ -30,7 +30,7 @@ def test_get_default_name(flush_serial, send_command, wait_for_response):
 
 
 @pytest.mark.hardware
-def test_set_device_name(flush_serial, send_command, wait_for_response):
+def test_set_device_name(clear_rules, flush_serial, send_command, wait_for_response):
     """Test setting a custom device name."""
     flush_serial()
 
@@ -48,7 +48,7 @@ def test_set_device_name(flush_serial, send_command, wait_for_response):
 
 
 @pytest.mark.hardware
-def test_set_and_get_device_name(flush_serial, send_command, wait_for_response):
+def test_set_and_get_device_name(clear_rules, flush_serial, send_command, wait_for_response):
     """Test setting a name and then retrieving it."""
     flush_serial()
 
@@ -71,7 +71,7 @@ def test_set_and_get_device_name(flush_serial, send_command, wait_for_response):
 
 
 @pytest.mark.hardware
-def test_set_name_with_spaces(flush_serial, send_command, wait_for_response):
+def test_set_name_with_spaces(clear_rules, flush_serial, send_command, wait_for_response):
     """Test setting a device name with spaces."""
     flush_serial()
 
@@ -93,7 +93,7 @@ def test_set_name_with_spaces(flush_serial, send_command, wait_for_response):
 
 
 @pytest.mark.hardware
-def test_set_name_with_special_chars(flush_serial, send_command, wait_for_response):
+def test_set_name_with_special_chars(clear_rules, flush_serial, send_command, wait_for_response):
     """Test setting a device name with special characters."""
     flush_serial()
 
@@ -114,7 +114,7 @@ def test_set_name_with_special_chars(flush_serial, send_command, wait_for_respon
 
 
 @pytest.mark.hardware
-def test_set_empty_name_restores_default(flush_serial, send_command, wait_for_response):
+def test_set_empty_name_restores_default(clear_rules, flush_serial, send_command, wait_for_response):
     """Test that setting an empty name restores the default board name."""
     flush_serial()
 
@@ -140,7 +140,7 @@ def test_set_empty_name_restores_default(flush_serial, send_command, wait_for_re
 
 
 @pytest.mark.hardware
-def test_set_very_long_name(flush_serial, send_command, wait_for_response):
+def test_set_very_long_name(clear_rules, flush_serial, send_command, wait_for_response):
     """Test setting a very long device name (should be truncated to MAX_DEVICE_NAME_LENGTH)."""
     flush_serial()
 
@@ -194,7 +194,7 @@ def test_name_persists_after_reset(flush_serial, send_command, wait_for_response
 
 
 @pytest.mark.hardware
-def test_name_in_caps_response(flush_serial, send_command, wait_for_response, parse_json_response):
+def test_name_in_caps_response(clear_rules, flush_serial, send_command, wait_for_response, parse_json_response):
     """Test that capabilities response includes max_rules field."""
     flush_serial()
 

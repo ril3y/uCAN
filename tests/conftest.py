@@ -104,12 +104,14 @@ def ser(serial_port: str, baud_rate: int, serial_timeout: float) -> Generator[se
     connection.rts = False
 
     # Give the device time to settle after opening
-    time.sleep(0.5)
+    # Increased to 2.0s to ensure device is fully ready
+    time.sleep(2.0)
 
     # Simple buffer reset - don't do aggressive draining
     # Aggressive draining can cause the board to stop responding
     connection.reset_input_buffer()
-    connection.reset_output_buffer()
+    # Don't reset output buffer - it can cause communication issues
+    # connection.reset_output_buffer()
 
     try:
         yield connection
@@ -117,7 +119,8 @@ def ser(serial_port: str, baud_rate: int, serial_timeout: float) -> Generator[se
         # Cleanup - always close even if test fails
         try:
             connection.reset_input_buffer()
-            connection.reset_output_buffer()
+            # Don't reset output buffer - can cause issues
+            # connection.reset_output_buffer()
         except:
             pass
         try:
@@ -137,10 +140,13 @@ def send_command(ser: serial.Serial):
         send_command("get:status")
         send_command("action:add:0:0x100:0xFFFFFFFF:::0:GPIO_TOGGLE:fixed:13")
     """
-    def _send(command: str) -> None:
+    def _send(command: str, debug: bool = False) -> None:
         """Send a command to the device."""
-        ser.write(f"{command}\n".encode('utf-8'))
+        cmd_bytes = f"{command}\n".encode('utf-8')
+        bytes_written = ser.write(cmd_bytes)
         ser.flush()
+        if debug:
+            print(f"  [send_command] Wrote {bytes_written}/{len(cmd_bytes)} bytes: '{command}'")
         time.sleep(0.05)  # Small delay for command processing
 
     return _send
@@ -207,24 +213,44 @@ def wait_for_response(ser: serial.Serial):
 
     Useful for waiting for specific message types like "STATUS;", "ACTIONDEF;", etc.
     """
-    def _wait(prefix: str, timeout: float = 2.0, max_attempts: int = 50) -> Optional[str]:
+    def _wait(prefix: str, timeout: float = 2.0, max_attempts: int = 50, debug: bool = False) -> Optional[str]:
         """Wait for a response starting with the given prefix."""
+        import time
+
         old_timeout = ser.timeout
-        ser.timeout = timeout / max_attempts  # Divide timeout among attempts
+        if debug:
+            print(f"  [wait_for_response] old_timeout={old_timeout}, setting to 0.1")
+        ser.timeout = 0.1  # 100ms per line - reasonable for device responses
 
         try:
-            for _ in range(max_attempts):
+            start_time = time.time()
+            attempts = 0
+
+            while attempts < max_attempts and (time.time() - start_time) < timeout:
                 line = ser.readline()
+                attempts += 1
+
                 if not line:
+                    if debug:
+                        print(f"  [wait_for_response] Attempt {attempts}: (empty)")
                     continue
 
                 decoded = line.decode('utf-8', errors='ignore').strip()
+                if debug:
+                    print(f"  [wait_for_response] Attempt {attempts}: {decoded[:60]}")
+
                 if decoded.startswith(prefix):
+                    if debug:
+                        print(f"  [wait_for_response] *** FOUND at attempt {attempts} ***")
                     return decoded
 
+            if debug:
+                print(f"  [wait_for_response] Exhausted after {attempts} attempts, {time.time() - start_time:.2f}s")
             return None  # Timeout - prefix not found
         finally:
             ser.timeout = old_timeout
+            if debug:
+                print(f"  [wait_for_response] Restored timeout to {old_timeout}")
 
     return _wait
 
@@ -335,13 +361,14 @@ def verify_status_ok(wait_for_response):
 
 
 @pytest.fixture
-def clear_rules(send_command):
-    """Clear all rules before test."""
+def clear_rules(send_command, flush_serial):
+    """Clear all rules before test and flush serial buffer."""
     # Clear rules 1-30
     for rule_id in range(1, 31):
         send_command(f"action:remove:{rule_id}")
         time.sleep(0.02)
-    time.sleep(0.1)
+    time.sleep(0.2)  # Wait for all responses
+    flush_serial()  # Clear any STATUS responses from buffer
 
 
 @pytest.fixture(autouse=True)
