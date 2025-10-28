@@ -77,10 +77,10 @@ The uCAN Web UI provides a modern, browser-based interface for monitoring and co
 **Download the latest release:**
 1. Go to [GitHub Releases](https://github.com/ril3y/uCAN/releases)
 2. Download the UF2 file for your board:
-   - `uCAN-feather_m4_can-*.uf2` - Feather M4 CAN (500kbps default)
-   - `uCAN-feather_m4_can_250k-*.uf2` - Feather M4 CAN (250kbps)
-   - `uCAN-feather_m4_can_1m-*.uf2` - Feather M4 CAN (1Mbps)
+   - `uCAN-feather_m4_can-*.uf2` - Adafruit Feather M4 CAN
    - `uCAN-pico-*.uf2` - Raspberry Pi Pico
+
+> **Note:** CAN bitrate defaults to 500kbps and can be changed via the web UI after installation. No need for separate firmware builds!
 
 **Install on Adafruit Feather M4 CAN:**
 1. Double-click the **RESET** button on the board

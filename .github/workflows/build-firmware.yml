@@ -15,9 +15,6 @@ jobs:
       matrix:
         environment:
           - feather_m4_can
-          - feather_m4_can_250k
-          - feather_m4_can_1m
-          - feather_m4_can_debug
           - pico
 
     steps:
@@ -123,7 +120,7 @@ jobs:
         mkdir release-assets
 
         # Package each environment's firmware
-        for env in feather_m4_can feather_m4_can_250k feather_m4_can_1m feather_m4_can_debug pico; do
+        for env in feather_m4_can pico; do
           if [ -d "firmware-builds/firmware-$env" ]; then
             cd firmware-builds/firmware-$env
 
@@ -170,11 +167,9 @@ jobs:
         3. Drag and drop UF2 file to FEATHERBOOT drive
         4. Board will auto-reset and run new firmware
 
-        **Variants Available:**
-        - `feather_m4_can` - Standard 500kbps CAN bitrate
-        - `feather_m4_can_250k` - 250kbps CAN bitrate
-        - `feather_m4_can_1m` - 1Mbps CAN bitrate
-        - `feather_m4_can_debug` - Debug build with verbose logging
+        **Default Configuration:**
+        - CAN bitrate: 500kbps (adjustable via web UI after installation)
+        - All features enabled (GPIO, PWM, NeoPixel, I2C, Actions)
 
         **For Raspberry Pi Pico:**
         1. Download `uCAN-pico-*.uf2`
