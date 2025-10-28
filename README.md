@@ -16,7 +16,19 @@
 
 The uCAN Web UI provides a modern, browser-based interface for monitoring and controlling CAN bus traffic in real-time. No installation required - just connect your uCAN device and open your browser.
 
-![uCAN Web Interface](docs/screenshots/notconnected.png)
+### Screenshots
+
+**Initial Connection Screen:**
+
+![uCAN Connection Screen](docs/screenshots/notconnected.png)
+
+**Live CAN Monitoring:**
+
+![uCAN Connected - CAN Message Monitoring](docs/screenshots/connected.png)
+
+**Rule-Based Action Configuration:**
+
+![uCAN Rules Configuration](docs/screenshots/rules.png)
 
 ### Web UI Features
 - **Real-time CAN Message Monitoring** - Live visualization of CAN_RX/CAN_TX messages
@@ -121,21 +133,6 @@ MCP2551 CANH/CANL → CAN Bus (with 120Ω termination)
 2. **Open browser** - Navigate to [https://battlewithbytes.io/tools/ucan](https://battlewithbytes.io/tools/ucan)
 3. **Click "Connect"** - Select your uCAN device from the Web Serial dialog
 4. **Start monitoring** - CAN messages appear in real-time!
-
-### 4. (Optional) Use Python TUI
-
-```bash
-# Install Python package
-pip install -e .
-
-# Run TUI with auto port selection
-python -m can_tui.main
-
-# Or connect to specific port
-python -m can_tui.main -p COM3              # Windows
-python -m can_tui.main -p /dev/ttyACM0       # Linux
-python -m can_tui.main -p /dev/cu.usbmodem*  # macOS
-```
 
 ---
 
@@ -362,18 +359,6 @@ uCAN/
 │   │   └── custom_command.h/.cpp  # Custom user commands
 │   └── main.cpp                   # Main firmware entry point
 │
-├── can_tui/                       # Python TUI application (optional)
-│   ├── app.py                     # Main Textual application
-│   ├── views/                     # Custom visualization views
-│   │   ├── base_view.py           # Base view class
-│   │   └── view_*.py              # Auto-discovered view modules
-│   ├── widgets/                   # UI widget components
-│   ├── parsers/                   # CAN message parsers
-│   │   ├── base.py                # Base parser class
-│   │   └── builtin/               # Built-in parsers
-│   ├── services/                  # Serial communication service
-│   └── models/                    # Data models
-│
 ├── tests/                         # Integration test suite
 │   ├── conftest.py                # Pytest fixtures
 │   ├── test_basic_commands.py     # Protocol command tests
@@ -388,8 +373,7 @@ uCAN/
 │   └── UCAN_WEB_API_GUIDE.md      # Web developer guide
 │
 ├── platformio.ini                 # PlatformIO build configuration
-├── parser_config.yaml             # TUI parser configuration
-├── pyproject.toml                 # Python package configuration
+├── pyproject.toml                 # Python test package configuration
 └── README.md                      # This file
 ```
 
@@ -435,11 +419,10 @@ python -m pytest tests/test_can_messaging.py --port COM3
 Contributions welcome! Areas for contribution:
 - **ESP32 HAL Implementation** - Complete ESP32 support
 - **STM32 HAL Implementation** - Complete STM32 support
-- **Custom Parsers** - Add CAN message parsers for specific protocols
-- **Custom Views** - Create visualization widgets for CAN IDs
 - **Web UI Features** - Enhance browser-based interface
 - **Documentation** - Improve guides and examples
 - **Test Coverage** - Add integration tests
+- **New Actions** - Implement additional hardware actions
 
 See [docs/DEVELOPER.md](docs/DEVELOPER.md) for development guidelines.
 
@@ -453,11 +436,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **[Textual](https://github.com/Textualize/textual)** - Python TUI framework
 - **[PlatformIO](https://platformio.org/)** - Embedded development platform
 - **[can2040](https://github.com/KevinOConnor/can2040)** - RP2040 CAN library
 - **[Adafruit CAN Fork](https://github.com/adafruit/Adafruit_CAN)** - SAMD51 CAN library
 - **[Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)** - Browser USB serial
+- **[pytest](https://pytest.org/)** - Python testing framework
 
 ---
 
