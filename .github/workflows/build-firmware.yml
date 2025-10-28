@@ -95,7 +95,7 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        pip install pytest pytest-timeout pyserial
+        pip install pytest pyserial
 
     - name: Run unit tests (no hardware required)
       run: |
