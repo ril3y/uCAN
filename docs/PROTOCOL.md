@@ -278,6 +278,7 @@ CAPS;{
     "adc": 8,
     "dac": 2
   },
+  "max_rules": 64,
   "features": ["neopixel", "action_system", "rules_engine"],
   "protocol_version": "2.0",
   "firmware_version": "2.0.0"
@@ -292,6 +293,7 @@ CAPS;{
 - `clock_mhz` (number): CPU clock speed in MHz
 - `flash_kb` (number): Flash memory size in kilobytes
 - `ram_kb` (number): RAM size in kilobytes
+- `max_rules` (number): Maximum number of action rules supported (platform-specific: RP2040=16, SAMD51=64, ESP32=32)
 - `protocol_version` (string): Protocol version (e.g., "2.0")
 - `firmware_version` (string): Firmware version (e.g., "2.0.0")
 

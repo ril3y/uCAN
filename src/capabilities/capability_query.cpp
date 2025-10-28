@@ -49,6 +49,9 @@ void send_capabilities_json() {
     can["fd_capable"] = false;  // CAN-FD not supported
     can["filters"] = 28;  // SAMD51 CAN has 28 filters
 
+    // Action system info
+    doc["max_rules"] = platform_capabilities.max_action_rules;  // Platform-specific rule limit from board config
+
     // Feature flags as array of strings
     JsonArray features = doc["features"].to<JsonArray>();
     features.add("action_system");  // Required by tests
