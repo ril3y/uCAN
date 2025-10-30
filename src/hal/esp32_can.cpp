@@ -19,10 +19,11 @@ ESP32CAN::ESP32CAN()
     , current_bitrate_(0)
     , loopback_enabled_(false)
     , listen_only_enabled_(false)
-    , visual_feedback_enabled_(false)
-    , last_error_(CAN_ERROR_NONE) {
-    // Initialize statistics
+    , visual_feedback_enabled_(false) {
+    // Initialize base class members
+    last_error_ = CAN_ERROR_NONE;
     memset(&stats_, 0, sizeof(stats_));
+    init_time_ms_ = 0;
 }
 
 ESP32CAN::~ESP32CAN() {
@@ -34,9 +35,12 @@ bool ESP32CAN::initialize(const CANConfig& config) {
         deinitialize();
     }
 
+    // Store configuration
+    config_ = config;
+
     // Configure bitrate
     if (!configure_bitrate(config.bitrate)) {
-        last_error_ = CAN_ERROR_INIT_FAILED;
+        last_error_ = CAN_ERROR_CONFIG_ERROR;
         return false;
     }
 
@@ -94,6 +98,7 @@ bool ESP32CAN::initialize(const CANConfig& config) {
 
     twai_initialized_ = true;
     current_bitrate_ = config.bitrate;
+    init_time_ms_ = millis();
 
     // Reset statistics
     reset_statistics();
@@ -101,22 +106,19 @@ bool ESP32CAN::initialize(const CANConfig& config) {
     return true;
 }
 
-bool ESP32CAN::deinitialize() {
+void ESP32CAN::deinitialize() {
     if (!twai_initialized_) {
-        return true;
+        return;
     }
 
     // Stop TWAI driver
     esp_err_t err = twai_stop();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        return false;
+        // Continue anyway
     }
 
     // Uninstall driver
-    err = twai_driver_uninstall();
-    if (err != ESP_OK) {
-        return false;
-    }
+    twai_driver_uninstall();
 
     twai_initialized_ = false;
 
@@ -124,13 +126,15 @@ bool ESP32CAN::deinitialize() {
     while (!rx_queue_.empty()) {
         rx_queue_.pop();
     }
+}
 
-    return true;
+bool ESP32CAN::is_ready() {
+    return twai_initialized_;
 }
 
 bool ESP32CAN::send_message(const CANMessage& message) {
     if (!twai_initialized_) {
-        last_error_ = CAN_ERROR_NOT_INITIALIZED;
+        last_error_ = CAN_ERROR_OTHER;
         return false;
     }
 
@@ -142,26 +146,18 @@ bool ESP32CAN::send_message(const CANMessage& message) {
     esp_err_t err = twai_transmit(&twai_msg, pdMS_TO_TICKS(100));
 
     if (err == ESP_OK) {
-        stats_.tx_count++;
-        if (visual_feedback_enabled_) {
-            indicate_tx();
-        }
+        update_tx_stats();
         return true;
     } else {
-        stats_.tx_error_count++;
+        stats_.error_count++;
         last_error_ = map_esp_error(err);
-
-        if (err == ESP_ERR_TIMEOUT) {
-            stats_.tx_dropped_count++;
-        }
-
         return false;
     }
 }
 
 bool ESP32CAN::receive_message(CANMessage& message) {
     if (!twai_initialized_) {
-        last_error_ = CAN_ERROR_NOT_INITIALIZED;
+        last_error_ = CAN_ERROR_OTHER;
         return false;
     }
 
@@ -178,12 +174,7 @@ bool ESP32CAN::receive_message(CANMessage& message) {
 
     if (err == ESP_OK) {
         convert_from_twai_message(twai_msg, message);
-        stats_.rx_count++;
-
-        if (visual_feedback_enabled_) {
-            indicate_rx();
-        }
-
+        update_rx_stats();
         return true;
     } else if (err == ESP_ERR_TIMEOUT) {
         // No message available
@@ -206,151 +197,97 @@ uint16_t ESP32CAN::available() {
     return rx_queue_.size();
 }
 
-bool ESP32CAN::set_bitrate(uint32_t bitrate) {
-    if (!twai_initialized_) {
-        last_error_ = CAN_ERROR_NOT_INITIALIZED;
-        return false;
-    }
-
-    // Reconfigure bitrate requires restart
-    CANConfig config;
-    config.bitrate = bitrate;
-    config.loopback_mode = loopback_enabled_;
-    config.listen_only_mode = listen_only_enabled_;
-
-    return initialize(config);
-}
-
-bool ESP32CAN::set_mode(CANMode mode) {
-    if (!twai_initialized_) {
-        last_error_ = CAN_ERROR_NOT_INITIALIZED;
-        return false;
-    }
-
-    twai_mode_t twai_mode;
-    switch (mode) {
-        case CAN_MODE_NORMAL:
-            twai_mode = TWAI_MODE_NORMAL;
-            loopback_enabled_ = false;
-            listen_only_enabled_ = false;
-            break;
-        case CAN_MODE_LOOPBACK:
-            twai_mode = TWAI_MODE_NO_ACK;
-            loopback_enabled_ = true;
-            listen_only_enabled_ = false;
-            break;
-        case CAN_MODE_LISTEN_ONLY:
-            twai_mode = TWAI_MODE_LISTEN_ONLY;
-            loopback_enabled_ = false;
-            listen_only_enabled_ = true;
-            break;
-        default:
-            last_error_ = CAN_ERROR_INVALID_PARAM;
-            return false;
-    }
-
-    // Mode change requires reinitialization
-    CANConfig config;
-    config.bitrate = current_bitrate_;
-    config.loopback_mode = loopback_enabled_;
-    config.listen_only_mode = listen_only_enabled_;
-
-    return initialize(config);
-}
-
-bool ESP32CAN::set_filter(uint32_t id, uint32_t mask, bool extended) {
-    // TWAI filters require driver reinstall
-    // For now, we'll just store this for next initialization
-    // TODO: Implement dynamic filter updates if needed
-    return false;  // Not supported without reinit
-}
-
-bool ESP32CAN::clear_filters() {
-    // Would require reinitialization
-    return false;
-}
-
 CANError ESP32CAN::get_error_status() {
     update_error_status();
     return last_error_;
 }
 
-CANBusState ESP32CAN::get_bus_state() {
+bool ESP32CAN::clear_errors() {
     if (!twai_initialized_) {
-        return CAN_BUS_OFF;
+        return false;
     }
 
-    twai_status_info_t status;
-    esp_err_t err = twai_get_status_info(&status);
-
-    if (err != ESP_OK) {
-        return CAN_BUS_OFF;
-    }
-
-    switch (status.state) {
-        case TWAI_STATE_RUNNING:
-            return CAN_BUS_ACTIVE;
-        case TWAI_STATE_BUS_OFF:
-            return CAN_BUS_OFF;
-        case TWAI_STATE_RECOVERING:
-            return CAN_BUS_ERROR_PASSIVE;
-        case TWAI_STATE_STOPPED:
-            return CAN_BUS_OFF;
-        default:
-            return CAN_BUS_OFF;
-    }
-}
-
-bool ESP32CAN::is_bus_off() {
-    return get_bus_state() == CAN_BUS_OFF;
-}
-
-void ESP32CAN::reset_error_counts() {
-    stats_.rx_error_count = 0;
-    stats_.tx_error_count = 0;
-    stats_.bus_error_count = 0;
     last_error_ = CAN_ERROR_NONE;
+
+    // Try to recover from bus-off state
+    twai_status_info_t status;
+    if (twai_get_status_info(&status) == ESP_OK) {
+        if (status.state == TWAI_STATE_BUS_OFF) {
+            // Initiate recovery
+            esp_err_t err = twai_initiate_recovery();
+            return (err == ESP_OK);
+        }
+    }
+
+    return true;
 }
 
-CANStatistics ESP32CAN::get_statistics() {
+void ESP32CAN::get_statistics(CANStatistics& stats) {
     // Update from TWAI status
     if (twai_initialized_) {
         twai_status_info_t status;
         if (twai_get_status_info(&status) == ESP_OK) {
-            stats_.tx_error_count = status.tx_error_counter;
-            stats_.rx_error_count = status.rx_error_counter;
-            stats_.bus_error_count = status.bus_error_count;
-            stats_.tx_dropped_count = status.tx_failed_count;
-            stats_.rx_overrun_count = status.rx_overrun_count;
+            // TWAI provides error counters we can merge with our stats
+            // Note: TWAI counters are hardware counters, not cumulative
         }
+
+        // Update uptime
+        stats_.uptime_ms = millis() - init_time_ms_;
     }
 
-    return stats_;
+    // Copy to output
+    stats = stats_;
 }
 
 void ESP32CAN::reset_statistics() {
     memset(&stats_, 0, sizeof(stats_));
-    stats_.start_time = millis();
+    init_time_ms_ = millis();
 }
 
-bool ESP32CAN::enable_loopback(bool enable) {
-    loopback_enabled_ = enable;
-    return set_mode(enable ? CAN_MODE_LOOPBACK : CAN_MODE_NORMAL);
+bool ESP32CAN::set_filter(uint32_t filter_id, uint32_t mask) {
+    // TWAI filters require driver reinstall
+    // Store for next initialization
+    config_.acceptance_filter = filter_id;
+    config_.acceptance_mask = mask;
+
+    // If already initialized, need to reinit to apply filter
+    if (twai_initialized_) {
+        return initialize(config_);
+    }
+
+    return true;
 }
 
-bool ESP32CAN::enable_listen_only(bool enable) {
-    listen_only_enabled_ = enable;
-    return set_mode(enable ? CAN_MODE_LISTEN_ONLY : CAN_MODE_NORMAL);
+const char* ESP32CAN::get_platform_name() {
+    return "ESP32-TWAI";
 }
 
-bool ESP32CAN::enable_one_shot(bool enable) {
-    // ESP32 TWAI doesn't directly support one-shot mode
-    // Would need to be implemented at application level
-    return false;
+const char* ESP32CAN::get_version() {
+    return "1.0.0";
+}
+
+bool ESP32CAN::set_loopback_mode(bool enabled) {
+    loopback_enabled_ = enabled;
+    config_.loopback_mode = enabled;
+
+    // Requires reinitialization to change mode
+    if (twai_initialized_) {
+        return initialize(config_);
+    }
+
+    return true;
 }
 
 void ESP32CAN::set_visual_feedback_enabled(bool enabled) {
     visual_feedback_enabled_ = enabled;
+}
+
+bool ESP32CAN::is_visual_feedback_enabled() {
+    return visual_feedback_enabled_;
+}
+
+uint32_t ESP32CAN::get_timestamp_ms() {
+    return millis();
 }
 
 // Private helper methods
@@ -407,7 +344,7 @@ void ESP32CAN::convert_from_twai_message(const twai_message_t& twai_msg, CANMess
     msg.length = twai_msg.data_length_code;
     msg.extended = twai_msg.extd ? true : false;
     msg.remote = twai_msg.rtr ? true : false;
-    msg.timestamp = millis();
+    msg.timestamp = get_timestamp_ms();
 
     // Copy data
     for (uint8_t i = 0; i < msg.length && i < 8; i++) {
@@ -435,11 +372,7 @@ void ESP32CAN::handle_twai_alerts() {
             CANMessage msg;
             convert_from_twai_message(twai_msg, msg);
             rx_queue_.push(msg);
-            stats_.rx_count++;
-
-            if (visual_feedback_enabled_) {
-                indicate_rx();
-            }
+            update_rx_stats();
         }
     }
 
@@ -448,21 +381,17 @@ void ESP32CAN::handle_twai_alerts() {
     }
 
     if (alerts & TWAI_ALERT_TX_FAILED) {
-        stats_.tx_error_count++;
-        stats_.tx_dropped_count++;
+        stats_.error_count++;
     }
 
     if (alerts & TWAI_ALERT_BUS_ERROR) {
-        stats_.bus_error_count++;
-        last_error_ = CAN_ERROR_BUS_ERROR;
-
-        if (visual_feedback_enabled_) {
-            indicate_error();
-        }
+        stats_.error_count++;
+        last_error_ = CAN_ERROR_OTHER;
+        update_error_stats(last_error_);
     }
 
     if (alerts & TWAI_ALERT_ERR_PASS) {
-        last_error_ = CAN_ERROR_ERROR_PASSIVE;
+        last_error_ = CAN_ERROR_PASSIVE;
     }
 
     if (alerts & TWAI_ALERT_BUS_OFF) {
@@ -476,13 +405,13 @@ void ESP32CAN::handle_twai_alerts() {
     }
 
     if (alerts & TWAI_ALERT_RX_QUEUE_FULL) {
-        stats_.rx_overrun_count++;
+        stats_.error_count++;
     }
 }
 
 void ESP32CAN::update_error_status() {
     if (!twai_initialized_) {
-        last_error_ = CAN_ERROR_NOT_INITIALIZED;
+        last_error_ = CAN_ERROR_OTHER;
         return;
     }
 
@@ -494,50 +423,47 @@ CANError ESP32CAN::map_esp_error(esp_err_t err) {
         case ESP_OK:
             return CAN_ERROR_NONE;
         case ESP_ERR_INVALID_STATE:
-            return CAN_ERROR_INVALID_STATE;
+            return CAN_ERROR_CONFIG_ERROR;
         case ESP_ERR_TIMEOUT:
-            return CAN_ERROR_TX_TIMEOUT;
+            return CAN_ERROR_OTHER;
         case ESP_ERR_INVALID_ARG:
-            return CAN_ERROR_INVALID_PARAM;
+            return CAN_ERROR_CONFIG_ERROR;
         case ESP_ERR_NO_MEM:
-            return CAN_ERROR_INIT_FAILED;
+            return CAN_ERROR_BUFFER_OVERFLOW;
         default:
-            return CAN_ERROR_UNKNOWN;
+            return CAN_ERROR_OTHER;
     }
 }
 
 void ESP32CAN::indicate_tx() {
     // Visual feedback for TX
-    // If board has NeoPixel, blink green
-    // For now, just use built-in LED if available
-    if (PIN_DEFINED(STATUS_LED_PIN)) {
+    // If board has status LED, blink briefly
+    #ifdef STATUS_LED_PIN
         digitalWrite(STATUS_LED_PIN, HIGH);
         delayMicroseconds(100);
         digitalWrite(STATUS_LED_PIN, LOW);
-    }
+    #endif
 }
 
 void ESP32CAN::indicate_rx() {
     // Visual feedback for RX
-    // If board has NeoPixel, blink yellow
-    if (PIN_DEFINED(STATUS_LED_PIN)) {
+    #ifdef STATUS_LED_PIN
         digitalWrite(STATUS_LED_PIN, HIGH);
         delayMicroseconds(50);
         digitalWrite(STATUS_LED_PIN, LOW);
-    }
+    #endif
 }
 
 void ESP32CAN::indicate_error() {
     // Visual feedback for errors
-    // If board has NeoPixel, blink red
-    if (PIN_DEFINED(STATUS_LED_PIN)) {
+    #ifdef STATUS_LED_PIN
         for (int i = 0; i < 3; i++) {
             digitalWrite(STATUS_LED_PIN, HIGH);
             delay(50);
             digitalWrite(STATUS_LED_PIN, LOW);
             delay(50);
         }
-    }
+    #endif
 }
 
 #endif // PLATFORM_ESP32

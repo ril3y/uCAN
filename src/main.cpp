@@ -52,7 +52,15 @@ void process_can_messages();
 
 void setup() {
   Serial.begin(DEFAULT_SERIAL_BAUD);
-  pinMode(LED_BUILTIN, OUTPUT);
+
+  // Setup status LED if available
+  #ifdef STATUS_LED_PIN
+    if (STATUS_LED_PIN != 0) {
+      pinMode(STATUS_LED_PIN, OUTPUT);
+    }
+  #elif defined(LED_BUILTIN)
+    pinMode(LED_BUILTIN, OUTPUT);
+  #endif
   
   // Wait for serial port to be ready (up to 3 seconds)
   unsigned long start_time = millis();
@@ -134,7 +142,13 @@ void loop() {
   // Blink LED to show we're alive
   static unsigned long last_blink = 0;
   if (millis() - last_blink > 1000) {
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    #ifdef STATUS_LED_PIN
+      if (STATUS_LED_PIN != 0) {
+        digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+      }
+    #elif defined(LED_BUILTIN)
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    #endif
     last_blink = millis();
   }
   
@@ -491,8 +505,10 @@ void handle_control_command(const char* action) {
     // Platform-specific reset
     #ifdef PLATFORM_RP2040
       watchdog_reboot(0, 0, 0);
+    #elif defined(PLATFORM_ESP32)
+      ESP.restart();
     #else
-      NVIC_SystemReset();
+      NVIC_SystemReset();  // ARM Cortex-M (SAMD51, STM32, etc.)
     #endif
 
   } else if (strcmp(action, "clear") == 0) {

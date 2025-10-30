@@ -35,38 +35,28 @@ public:
     ESP32CAN();
     ~ESP32CAN() override;
 
-    // Initialization
+    // Core CANInterface methods - must match base class exactly
     bool initialize(const CANConfig& config) override;
-    bool deinitialize() override;
-
-    // Message transmission and reception
+    void deinitialize() override;
+    bool is_ready() override;
     bool send_message(const CANMessage& message) override;
     bool receive_message(CANMessage& message) override;
     uint16_t available() override;
-
-    // Configuration
-    bool set_bitrate(uint32_t bitrate) override;
-    bool set_mode(CANMode mode) override;
-    bool set_filter(uint32_t id, uint32_t mask, bool extended) override;
-    bool clear_filters() override;
-
-    // Status and errors
     CANError get_error_status() override;
-    CANBusState get_bus_state() override;
-    bool is_bus_off() override;
-    void reset_error_counts() override;
-
-    // Statistics
-    CANStatistics get_statistics() override;
+    bool clear_errors() override;
+    void get_statistics(CANStatistics& stats) override;
     void reset_statistics() override;
+    bool set_filter(uint32_t filter_id, uint32_t mask) override;
+    const char* get_platform_name() override;
+    const char* get_version() override;
+    bool set_loopback_mode(bool enabled) override;
 
-    // Control
-    bool enable_loopback(bool enable) override;
-    bool enable_listen_only(bool enable) override;
-    bool enable_one_shot(bool enable) override;
-
-    // Visual feedback (if NeoPixel or LED available)
+    // Visual feedback override
     void set_visual_feedback_enabled(bool enabled) override;
+    bool is_visual_feedback_enabled() override;
+
+protected:
+    uint32_t get_timestamp_ms() override;
 
 private:
     // ESP32 TWAI specific
@@ -78,13 +68,7 @@ private:
     // Message queue for received messages
     std::queue<CANMessage> rx_queue_;
 
-    // Statistics tracking
-    CANStatistics stats_;
-
-    // Error tracking
-    CANError last_error_;
-
-    // Configuration
+    // Configuration tracking
     uint32_t current_bitrate_;
     bool loopback_enabled_;
     bool listen_only_enabled_;
@@ -98,7 +82,7 @@ private:
     void update_error_status();
     CANError map_esp_error(esp_err_t err);
 
-    // Visual feedback
+    // Visual feedback implementation
     void indicate_tx();
     void indicate_rx();
     void indicate_error();

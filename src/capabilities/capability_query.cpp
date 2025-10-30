@@ -4,6 +4,10 @@
 #include "board_capabilities.h"
 #include "../actions/action_manager_base.h"
 
+#ifdef PLATFORM_ESP32
+#include <Preferences.h>
+#endif
+
 // External reference to action manager (defined in main.cpp)
 extern ActionManagerBase* action_manager;
 
@@ -201,15 +205,33 @@ const char* get_device_name() {
 /**
  * Load device name from persistent storage
  *
- * Device name is loaded automatically with rules on startup,
- * so this function just returns true if a name is set.
+ * Device name is loaded automatically with rules on startup for SAMD51/RP2040,
+ * but needs explicit loading from Preferences for ESP32.
  *
  * @return true if custom name is loaded (non-empty)
  */
 bool load_device_name() {
-    // Device name is loaded automatically when rules are loaded
+#if defined(PLATFORM_ESP32)
+    // ESP32: Load from Preferences API
+    Preferences prefs;
+    if (!prefs.begin("ucan", true)) {  // Read-only
+        return false;
+    }
+
+    String name = prefs.getString("device_name", "");
+    prefs.end();
+
+    if (name.length() > 0 && name.length() < MAX_DEVICE_NAME_LENGTH) {
+        strncpy(device_name, name.c_str(), MAX_DEVICE_NAME_LENGTH - 1);
+        device_name[MAX_DEVICE_NAME_LENGTH - 1] = '\0';
+        return true;
+    }
+    return false;
+#else
+    // SAMD51/RP2040: Device name is loaded automatically when rules are loaded
     // This happens in main.cpp setup() via action_manager->load_rules()
     return (device_name[0] != '\0');
+#endif
 }
 
 /**
@@ -234,6 +256,16 @@ bool save_device_name() {
     // RP2040: Device name is saved in FlashHeader alongside rules
     // Trigger a rules save which will save the device name too
     return action_manager->save_rules();
+
+#elif defined(PLATFORM_ESP32)
+    // ESP32: Device name is saved separately in Preferences API
+    Preferences prefs;
+    if (!prefs.begin("ucan", false)) {
+        return false;
+    }
+    bool result = prefs.putString("device_name", device_name);
+    prefs.end();
+    return result;
 
 #else
     return false;

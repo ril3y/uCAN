@@ -15,16 +15,24 @@
 
 // Platform detection - determine which platform we're building for
 #if defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
-    #define PLATFORM_RP2040
+    #ifndef PLATFORM_RP2040
+        #define PLATFORM_RP2040
+    #endif
     #define PLATFORM_NAME "RP2040"
 #elif defined(ARDUINO_ADAFRUIT_FEATHER_M4_CAN)
-    #define PLATFORM_SAMD51
+    #ifndef PLATFORM_SAMD51
+        #define PLATFORM_SAMD51
+    #endif
     #define PLATFORM_NAME "SAMD51"
 #elif defined(ARDUINO_ARCH_ESP32)
-    #define PLATFORM_ESP32
+    #ifndef PLATFORM_ESP32
+        #define PLATFORM_ESP32
+    #endif
     #define PLATFORM_NAME "ESP32"
 #elif defined(ARDUINO_ARCH_STM32)
-    #define PLATFORM_STM32
+    #ifndef PLATFORM_STM32
+        #define PLATFORM_STM32
+    #endif
     #define PLATFORM_NAME "STM32"
 #else
     #error "Unsupported platform - please add platform detection"
@@ -110,5 +118,11 @@ inline const BoardConfig& get_board_config() {
 #define CAN_TX_BUFFER_SIZE  (get_board_config().can_tx_buffer_size)
 
 // Default values
-#define DEFAULT_CAN_BITRATE (get_board_config().default_can_bitrate)
+#ifndef DEFAULT_CAN_BITRATE
+    #define DEFAULT_CAN_BITRATE (get_board_config().default_can_bitrate)
+#endif
 #define DEFAULT_SERIAL_BAUD (get_board_config().default_serial_baud)
+
+// LED_BUILTIN compatibility - use status LED pin from board config
+// Note: Some platforms define LED_BUILTIN, so we provide STATUS_LED_PIN as alternative
+#define STATUS_LED_PIN (get_board_config().pins.status_led_pin)
