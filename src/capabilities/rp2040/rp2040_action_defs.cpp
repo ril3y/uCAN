@@ -1,59 +1,26 @@
-#include "samd51_action_manager.h"
+#include "rp2040_action_manager.h"
 #include "../../actions/param_mapping.h"
 #include "../../actions/action_types.h"
 
-#ifdef PLATFORM_SAMD51
+#ifdef PLATFORM_RP2040
 
 // ============================================================================
-// SAMD51-Specific Action Definitions
+// RP2040-Specific Action Definitions
 // ============================================================================
-
-// ----------------------------------------------------------------------------
-// NeoPixel RGB Control
-// ----------------------------------------------------------------------------
-
-static const ParamMapping NEOPIXEL_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "r", "action_param", "Red", "Red intensity (0-255)"},
-    {1, 0, 8, PARAM_UINT8, 0, 255, "g", "action_param", "Green", "Green intensity (0-255)"},
-    {2, 0, 8, PARAM_UINT8, 0, 255, "b", "action_param", "Blue", "Blue intensity (0-255)"},
-    {3, 0, 8, PARAM_UINT8, 0, 255, "brightness", "action_param", "Brightness", "Overall brightness (0-255, 0=off, 255=full)"}
-};
-
-static const ActionDefinition NEOPIXEL_DEF = {
-    .action = ACTION_NEOPIXEL_COLOR,
-    .name = "NEOPIXEL",
-    .description = "Control onboard NeoPixel RGB LED",
-    .category = "Display",
-    .trigger_type = "can_msg",
-    .param_count = 4,
-    .param_map = NEOPIXEL_PARAMS
-};
-
-// ----------------------------------------------------------------------------
-// PWM Control
-// ----------------------------------------------------------------------------
-
-static const ParamMapping PWM_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "PWM Pin", "Pin number supporting PWM (e.g., 3, 5, 6, 9, 10, 11)"},
-    {1, 0, 8, PARAM_UINT8, 0, 255, "duty", "action_param", "Duty Cycle", "PWM duty cycle (0=off, 128=50%, 255=full)"}
-};
-
-static const ActionDefinition PWM_DEF = {
-    .action = ACTION_PWM_SET,
-    .name = "PWM_SET",
-    .description = "Set PWM duty cycle on pin",
-    .category = "GPIO",
-    .trigger_type = "can_msg",
-    .param_count = 2,
-    .param_map = PWM_PARAMS
-};
+// RP2040 (Raspberry Pi Pico) hardware capabilities:
+// - Basic GPIO
+// - Hardware PWM (16 channels, 16-bit duty cycle)
+// - 12-bit ADC (4 external channels + temperature sensor)
+// - NO built-in NeoPixel
+// - NO hardware I2C support in this configuration
+// ============================================================================
 
 // ----------------------------------------------------------------------------
 // GPIO Control (Single Pin)
 // ----------------------------------------------------------------------------
 
 static const ParamMapping GPIO_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "GPIO Pin Number", "Pin to control (e.g., 13 for onboard LED)"}
+    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "GPIO Pin Number", "Pin to control (e.g., 25 for onboard LED)"}
 };
 
 static const ActionDefinition GPIO_SET_DEF = {
@@ -84,6 +51,25 @@ static const ActionDefinition GPIO_TOGGLE_DEF = {
     .trigger_type = "can_msg",
     .param_count = 1,
     .param_map = GPIO_PARAMS
+};
+
+// ----------------------------------------------------------------------------
+// PWM Control
+// ----------------------------------------------------------------------------
+
+static const ParamMapping PWM_PARAMS[] = {
+    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "PWM Pin", "Pin number supporting PWM (e.g., GP0-GP29)"},
+    {1, 0, 8, PARAM_UINT8, 0, 255, "duty", "action_param", "Duty Cycle", "PWM duty cycle (0=off, 128=50%, 255=full)"}
+};
+
+static const ActionDefinition PWM_DEF = {
+    .action = ACTION_PWM_SET,
+    .name = "PWM_SET",
+    .description = "Set PWM duty cycle on pin",
+    .category = "GPIO",
+    .trigger_type = "can_msg",
+    .param_count = 2,
+    .param_map = PWM_PARAMS
 };
 
 // ----------------------------------------------------------------------------
@@ -124,7 +110,7 @@ static const ActionDefinition CAN_SEND_PERIODIC_DEF = {
 };
 
 // ----------------------------------------------------------------------------
-// Phase 1: PWM with Frequency Control
+// PWM with Frequency Control
 // ----------------------------------------------------------------------------
 
 static const ParamMapping PWM_CONFIGURE_PARAMS[] = {
@@ -145,52 +131,7 @@ static const ActionDefinition PWM_CONFIGURE_DEF = {
 };
 
 // ----------------------------------------------------------------------------
-// Phase 1: I2C Write
-// ----------------------------------------------------------------------------
-
-static const ParamMapping I2C_WRITE_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "sda_pin", "action_param", "SDA Pin", "I2C SDA pin number"},
-    {1, 0, 8, PARAM_UINT8, 0, 255, "scl_pin", "action_param", "SCL Pin", "I2C SCL pin number"},
-    {2, 0, 7, PARAM_UINT8, 0, 127, "i2c_addr", "action_param", "I2C Address", "7-bit I2C device address"},
-    {3, 0, 8, PARAM_UINT8, 0, 255, "reg_addr", "action_param", "Register", "Device register address"},
-    {4, 0, 8, PARAM_UINT8, 0, 255, "data", "action_param", "Data", "Data byte to write"}
-};
-
-static const ActionDefinition I2C_WRITE_DEF = {
-    .action = ACTION_I2C_WRITE,
-    .name = "I2C_WRITE",
-    .description = "Write single byte to I2C device register",
-    .category = "I2C",
-    .trigger_type = "can_msg",
-    .param_count = 5,
-    .param_map = I2C_WRITE_PARAMS
-};
-
-// ----------------------------------------------------------------------------
-// Phase 1: I2C Read to Buffer
-// ----------------------------------------------------------------------------
-
-static const ParamMapping I2C_READ_BUFFER_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "sda_pin", "action_param", "SDA Pin", "I2C SDA pin number"},
-    {1, 0, 8, PARAM_UINT8, 0, 255, "scl_pin", "action_param", "SCL Pin", "I2C SCL pin number"},
-    {2, 0, 7, PARAM_UINT8, 0, 127, "i2c_addr", "action_param", "I2C Address", "7-bit I2C device address"},
-    {3, 0, 8, PARAM_UINT8, 0, 255, "reg_addr", "action_param", "Register", "Device register address"},
-    {4, 0, 8, PARAM_UINT8, 1, 8, "num_bytes", "action_param", "Byte Count", "Number of bytes to read (1-8)"},
-    {5, 0, 8, PARAM_UINT8, 0, 7, "buffer_slot", "output_param", "Buffer Slot", "Starting slot in data buffer (0-7)"}
-};
-
-static const ActionDefinition I2C_READ_BUFFER_DEF = {
-    .action = ACTION_I2C_READ_BUFFER,
-    .name = "I2C_READ_BUFFER",
-    .description = "Read bytes from I2C device into data buffer",
-    .category = "I2C",
-    .trigger_type = "can_msg",
-    .param_count = 6,
-    .param_map = I2C_READ_BUFFER_PARAMS
-};
-
-// ----------------------------------------------------------------------------
-// Phase 1: GPIO Read to Buffer
+// GPIO Read to Buffer
 // ----------------------------------------------------------------------------
 
 static const ParamMapping GPIO_READ_BUFFER_PARAMS[] = {
@@ -209,18 +150,18 @@ static const ActionDefinition GPIO_READ_BUFFER_DEF = {
 };
 
 // ----------------------------------------------------------------------------
-// Phase 1: ADC Read to Buffer
+// ADC Read to Buffer
 // ----------------------------------------------------------------------------
 
 static const ParamMapping ADC_READ_BUFFER_PARAMS[] = {
-    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "ADC Pin", "Analog pin to read"},
+    {0, 0, 8, PARAM_UINT8, 0, 255, "pin", "action_param", "ADC Pin", "Analog pin to read (26-29 for ADC0-3)"},
     {1, 0, 8, PARAM_UINT8, 0, 6, "buffer_slot", "output_param", "Buffer Slot", "Starting slot in buffer (0-6, uses 2 bytes)"}
 };
 
 static const ActionDefinition ADC_READ_BUFFER_DEF = {
     .action = ACTION_ADC_READ_BUFFER,
     .name = "ADC_READ_BUFFER",
-    .description = "Read ADC value into data buffer (16-bit, 2 bytes)",
+    .description = "Read ADC value into data buffer (12-bit, 2 bytes)",
     .category = "GPIO",
     .trigger_type = "can_msg",
     .param_count = 2,
@@ -228,7 +169,7 @@ static const ActionDefinition ADC_READ_BUFFER_DEF = {
 };
 
 // ----------------------------------------------------------------------------
-// Phase 1: Buffer Send
+// Buffer Send
 // ----------------------------------------------------------------------------
 
 static const ParamMapping BUFFER_SEND_PARAMS[] = {
@@ -248,7 +189,7 @@ static const ActionDefinition BUFFER_SEND_DEF = {
 };
 
 // ----------------------------------------------------------------------------
-// Phase 1: Buffer Clear
+// Buffer Clear
 // ----------------------------------------------------------------------------
 
 static const ActionDefinition BUFFER_CLEAR_DEF = {
@@ -262,36 +203,34 @@ static const ActionDefinition BUFFER_CLEAR_DEF = {
 };
 
 // ============================================================================
-// Action Definition Registry for SAMD51
+// Action Definition Registry for RP2040
 // ============================================================================
 
-static const ActionDefinition* SAMD51_ACTION_DEFS[] = {
+static const ActionDefinition* RP2040_ACTION_DEFS[] = {
     &GPIO_SET_DEF,
     &GPIO_CLEAR_DEF,
     &GPIO_TOGGLE_DEF,
     &PWM_DEF,
-    &NEOPIXEL_DEF,
     &CAN_SEND_DEF,
     &CAN_SEND_PERIODIC_DEF,
-    // Phase 1 actions
     &PWM_CONFIGURE_DEF,
-    &I2C_WRITE_DEF,
-    &I2C_READ_BUFFER_DEF,
     &GPIO_READ_BUFFER_DEF,
     &ADC_READ_BUFFER_DEF,
     &BUFFER_SEND_DEF,
     &BUFFER_CLEAR_DEF
+    // NOTE: NO NeoPixel support (no onboard NeoPixel on Pico)
+    // NOTE: NO I2C actions (not implemented in this configuration)
 };
 
-static const uint8_t SAMD51_ACTION_COUNT = sizeof(SAMD51_ACTION_DEFS) / sizeof(SAMD51_ACTION_DEFS[0]);
+static const uint8_t RP2040_ACTION_COUNT = sizeof(RP2040_ACTION_DEFS) / sizeof(RP2040_ACTION_DEFS[0]);
 
 // ============================================================================
-// SAMD51ActionManager Method Implementations
+// RP2040ActionManager Method Implementations
 // ============================================================================
 
-const ActionDefinition* SAMD51ActionManager::get_action_definition(ActionType action) const {
-    for (uint8_t i = 0; i < SAMD51_ACTION_COUNT; i++) {
-        const ActionDefinition* def = SAMD51_ACTION_DEFS[i];
+const ActionDefinition* RP2040ActionManager::get_action_definition(ActionType action) const {
+    for (uint8_t i = 0; i < RP2040_ACTION_COUNT; i++) {
+        const ActionDefinition* def = RP2040_ACTION_DEFS[i];
         if (def->action == action) {
             return def;
         }
@@ -299,9 +238,9 @@ const ActionDefinition* SAMD51ActionManager::get_action_definition(ActionType ac
     return nullptr;
 }
 
-const ActionDefinition* const* SAMD51ActionManager::get_all_action_definitions(uint8_t& count) const {
-    count = SAMD51_ACTION_COUNT;
-    return SAMD51_ACTION_DEFS;
+const ActionDefinition* const* RP2040ActionManager::get_all_action_definitions(uint8_t& count) const {
+    count = RP2040_ACTION_COUNT;
+    return RP2040_ACTION_DEFS;
 }
 
-#endif // PLATFORM_SAMD51
+#endif // PLATFORM_RP2040

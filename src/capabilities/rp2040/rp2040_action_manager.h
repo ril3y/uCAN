@@ -36,6 +36,10 @@ protected:
 
     // Custom command registration
     void register_custom_commands() override;
+
+    // Action definition methods
+    const ActionDefinition* get_action_definition(ActionType action) const override;
+    const ActionDefinition* const* get_all_action_definitions(uint8_t& count) const override;
 };
 
 #endif // PLATFORM_RP2040

@@ -252,22 +252,15 @@ bool RP2040ActionManager::execute_adc_read_send_action(uint8_t adc_pin, uint32_t
 }
 
 bool RP2040ActionManager::save_rules_impl() {
-    // TODO: Implement RP2040 flash persistence
-    // Options:
-    // 1. LittleFS on flash (requires library)
-    // 2. EEPROM emulation (write to flash block)
-    // 3. Use last 4KB of flash for rule storage
-
-    // For now, return false (no persistence)
-    return false;
+    // Use RP2040 flash storage to persist rules
+    // This also saves the device name in the flash header
+    return save_rules_to_flash(rules_, get_rule_count());
 }
 
 uint8_t RP2040ActionManager::load_rules_impl() {
-    // TODO: Implement RP2040 flash loading
-    // Match implementation in save_rules_impl()
-
-    // For now, return 0 (no rules loaded)
-    return 0;
+    // Load rules from RP2040 flash storage
+    // This also loads the device name from the flash header
+    return load_rules_from_flash(rules_, MAX_ACTION_RULES);
 }
 
 void RP2040ActionManager::register_custom_commands() {
