@@ -258,7 +258,7 @@ Format: `CAPS;{JSON}`
 
 Sent in response to `get:capabilities`. Provides complete board information.
 
-**Example:**
+**Example (Feather M4 CAN):**
 ```json
 CAPS;{
   "board": "Adafruit Feather M4 CAN",
@@ -278,10 +278,124 @@ CAPS;{
     "adc": 8,
     "dac": 2
   },
+  "hardware": {
+    "can_tx_pin": 5,
+    "can_rx_pin": 7,
+    "can_controller": "MCAN",
+    "transceiver": "Built-in",
+    "neopixel_pin": 8
+  },
   "max_rules": 64,
-  "features": ["neopixel", "action_system", "rules_engine"],
+  "features": ["GPIO", "PWM", "ADC", "DAC", "NEOPIXEL", "CAN_SEND", "FLASH", "I2C", "action_system", "rules_engine"],
   "protocol_version": "2.0",
-  "firmware_version": "2.0.0"
+  "firmware_version": "2.2.0"
+}
+```
+
+**Example (LilyGo T-CAN485):**
+```json
+CAPS;{
+  "board": "LilyGo T-CAN485",
+  "chip": "ESP32",
+  "clock_mhz": 240,
+  "flash_kb": 4096,
+  "ram_kb": 520,
+  "can": {
+    "controllers": 1,
+    "max_bitrate": 1000000,
+    "fd_capable": false,
+    "filters": 0
+  },
+  "gpio": {
+    "total": 34,
+    "pwm": 16,
+    "adc": 18,
+    "dac": 2
+  },
+  "hardware": {
+    "can_tx_pin": 27,
+    "can_rx_pin": 26,
+    "can_controller": "ESP32 TWAI",
+    "transceiver": "SN65HVD231",
+    "neopixel_pin": 4,
+    "sd_card": {
+      "cs_pin": 13,
+      "miso_pin": 2,
+      "mosi_pin": 15,
+      "sclk_pin": 14
+    },
+    "rs485": {
+      "tx_pin": 22,
+      "rx_pin": 21,
+      "enable_pin": 17
+    },
+    "connectivity": {
+      "wifi": true,
+      "bluetooth": true
+    },
+    "power_enable_pin": 16
+  },
+  "max_rules": 48,
+  "features": ["GPIO", "PWM", "ADC", "DAC", "NEOPIXEL", "CAN_SEND", "FLASH", "CRYPTO", "RTC", "I2C", "SD_CARD", "WIFI", "BLUETOOTH", "RS485", "action_system", "rules_engine"],
+  "protocol_version": "2.0",
+  "firmware_version": "2.2.0"
+}
+```
+
+**Example (LilyGo T-Panel):**
+```json
+CAPS;{
+  "board": "LilyGo T-Panel",
+  "chip": "ESP32-S3",
+  "clock_mhz": 240,
+  "flash_kb": 16384,
+  "ram_kb": 520,
+  "can": {
+    "controllers": 1,
+    "max_bitrate": 1000000,
+    "fd_capable": false,
+    "filters": 0
+  },
+  "gpio": {
+    "total": 45,
+    "pwm": 8,
+    "adc": 10,
+    "dac": 0
+  },
+  "hardware": {
+    "can_tx_pin": 16,
+    "can_rx_pin": 15,
+    "can_controller": "ESP32-S3 TWAI",
+    "transceiver": "TD501MCANFD (optional module)",
+    "sd_card": {
+      "cs_pin": 34,
+      "miso_pin": 37,
+      "mosi_pin": 35,
+      "sclk_pin": 36
+    },
+    "rs485": {
+      "tx_pin": 16,
+      "rx_pin": 15,
+      "enable_pin": 7
+    },
+    "display": {
+      "backlight_pin": 33,
+      "resolution": "480x480",
+      "driver": "ST7701S"
+    },
+    "touchscreen": {
+      "controller": "CST3240",
+      "interface": "I2C"
+    },
+    "connectivity": {
+      "wifi": true,
+      "bluetooth": true
+    }
+  },
+  "max_rules": 64,
+  "features": ["GPIO", "PWM", "ADC", "CAN_SEND", "FLASH", "CRYPTO", "RTC", "I2C", "SD_CARD", "WIFI", "BLUETOOTH", "RS485", "DISPLAY", "TOUCHSCREEN", "action_system", "rules_engine"],
+  "protocol_version": "2.0",
+  "firmware_version": "2.2.0"
 }
 ```
 
@@ -309,8 +423,45 @@ CAPS;{
 - `adc` (number): Analog input pins
 - `dac` (number): Digital-to-analog converter pins
 
+**Hardware Object (board-specific peripherals):**
+- `can_tx_pin` (number): CAN TX pin number
+- `can_rx_pin` (number): CAN RX pin number
+- `can_controller` (string): CAN controller type ("MCAN", "TWAI", "bxCAN")
+- `transceiver` (string): CAN transceiver chip
+- `neopixel_pin` (number, optional): NeoPixel data pin
+- `sd_card` (object, optional): SD card pins {cs_pin, miso_pin, mosi_pin, sclk_pin}
+- `rs485` (object, optional): RS485 pins {tx_pin, rx_pin, enable_pin}
+- `display` (object, optional): Display info {backlight_pin, resolution, driver}
+- `touchscreen` (object, optional): Touch controller {controller, interface}
+- `connectivity` (object, optional): Wireless features {wifi, bluetooth}
+- `power_enable_pin` (number, optional): Power management pin
+
 **Features Array:**
-Common features: `"neopixel"`, `"action_system"`, `"rules_engine"`, `"flash_storage"`, `"I2C"`, `"wifi"`, `"bluetooth"`
+
+**Platform Capabilities (chip-level):**
+- `"GPIO"` - Digital GPIO control
+- `"PWM"` - PWM output
+- `"ADC"` - Analog input
+- `"DAC"` - Analog output (SAMD51, ESP32 only)
+- `"NEOPIXEL"` - NeoPixel/WS2812 LED
+- `"CAN_SEND"` - CAN message transmission
+- `"FLASH"` - Persistent storage
+- `"CRYPTO"` - Hardware crypto (ESP32 only)
+- `"RTC"` - Real-time clock (ESP32 only)
+- `"I2S"` - I2S audio
+- `"I2C"` - I2C communication
+
+**Board Features (product-specific):**
+- `"SD_CARD"` - SD card storage (T-CAN485, T-Panel)
+- `"WIFI"` - WiFi 2.4/5GHz (ESP32 boards)
+- `"BLUETOOTH"` - Bluetooth Classic + BLE (ESP32 boards)
+- `"RS485"` - RS485 transceiver (T-CAN485, T-Panel)
+- `"DISPLAY"` - Touchscreen display (T-Panel)
+- `"TOUCHSCREEN"` - Capacitive touch (T-Panel)
+
+**Core Features (all boards):**
+- `"action_system"` - Rule-based action system
+- `"rules_engine"` - CAN message rule matching
 
 ### PINS - Pin Capabilities
 
