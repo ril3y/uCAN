@@ -44,31 +44,36 @@
 #include "../board_config.h"
 
 // LilyGo T-Panel pin configuration
+// Based on official T-Panel pinmap
+// Note: This board has an optional RS485/CAN module connector
 const BoardPinConfig t_panel_pins = {
-    // CAN interface pins (V1.2+, shared with RS485)
-    .can_tx_pin = 16,             // GPIO16 -> CAN/RS485 TX
-    .can_rx_pin = 15,             // GPIO15 -> CAN/RS485 RX
+    // CAN interface pins (V1.2+ optional module)
+    // Connected via high-speed isolation transceiver module (D_GND, A, B, S_GND)
+    // The README indicates V1.2+ uses GPIO 15/16 for CAN/RS485
+    .can_tx_pin = 16,             // GPIO16 -> CAN/RS485 TX (via optional module)
+    .can_rx_pin = 15,             // GPIO15 -> CAN/RS485 RX (via optional module)
     .can_standby_pin = PIN_NOT_AVAILABLE,
     .can_speed_mode_pin = PIN_NOT_AVAILABLE,
 
-    // No external power control (powered via USB-C)
+    // No external power control (powered via USB-C, 7-24V DC)
     .power_enable_pin = PIN_NOT_AVAILABLE,
 
-    // No NeoPixel, but has backlight control
+    // No NeoPixel, but has LCD backlight control
     .neopixel_pin = PIN_NOT_AVAILABLE,
     .neopixel_power_pin = PIN_NOT_AVAILABLE,
-    .status_led_pin = 14,         // Backlight on GPIO14 (can be used as status indicator)
+    .status_led_pin = 33,         // LCD_BL on GPIO33 (backlight can indicate status)
 
-    // SD card interface
-    .sd_cs_pin = 38,              // GPIO38 -> SD CS
-    .sd_miso_pin = 37,            // GPIO37 -> SD MISO
-    .sd_mosi_pin = 35,            // GPIO35 -> SD MOSI
-    .sd_sclk_pin = 36,            // GPIO36 -> SD SCLK
+    // SD card interface (verified from pinmap)
+    .sd_cs_pin = 34,              // IO34 -> SD CS (corrected from pinmap)
+    .sd_miso_pin = 37,            // IO37 -> SD MISO
+    .sd_mosi_pin = 35,            // IO35 -> SD MOSI
+    .sd_sclk_pin = 36,            // IO36 -> SD SCLK
 
-    // RS485 interface (V1.0-V1.1 only, V1.2+ shares pins with CAN)
-    .rs485_tx_pin = 16,           // Shared with CAN
-    .rs485_rx_pin = 15,           // Shared with CAN
-    .rs485_enable_pin = PIN_NOT_AVAILABLE,  // Controlled via XL9535
+    // RS485 interface (optional module, shares pins with CAN)
+    // Connected via RS485_CON (IO07) on V1.2+
+    .rs485_tx_pin = 16,           // Shared with CAN (via optional module)
+    .rs485_rx_pin = 15,           // Shared with CAN (via optional module)
+    .rs485_enable_pin = 7,        // IO07 -> RS485_CON control
 };
 
 // T-Panel memory configuration

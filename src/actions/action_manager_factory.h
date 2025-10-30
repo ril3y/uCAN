@@ -1,9 +1,9 @@
 #pragma once
 
 #include "action_manager_base.h"
-#include "../hal/platform_config.h"
+#include "../boards/board_registry.h"
 
-// Platform-specific includes
+// Platform-specific includes based on detected platform
 #ifdef PLATFORM_SAMD51
 #include "../capabilities/samd51/samd51_action_manager.h"
 #endif
@@ -13,18 +13,18 @@
 #endif
 
 #ifdef PLATFORM_ESP32
-// Future: #include "../capabilities/esp32/esp32_action_manager.h"
+#include "../capabilities/esp32/esp32_action_manager.h"
 #endif
 
 #ifdef PLATFORM_STM32
-// Future: #include "../capabilities/stm32/stm32_action_manager.h"
+#include "../capabilities/stm32/stm32_action_manager.h"
 #endif
 
 /**
  * ActionManagerFactory
  *
  * Factory pattern for creating platform-specific ActionManager instances.
- * Uses compile-time platform detection to instantiate the correct implementation.
+ * Uses the centralized board registry for platform detection and instantiation.
  *
  * Usage:
  *   ActionManagerBase* manager = ActionManagerFactory::create();
@@ -47,11 +47,9 @@ public:
 #elif defined(PLATFORM_RP2040)
         return new RP2040ActionManager();
 #elif defined(PLATFORM_ESP32)
-        // Future: return new ESP32ActionManager();
-        return nullptr;
+        return new ESP32ActionManager();
 #elif defined(PLATFORM_STM32)
-        // Future: return new STM32ActionManager();
-        return nullptr;
+        return new STM32ActionManager();
 #else
         #error "No ActionManager implementation for this platform"
         return nullptr;
@@ -63,17 +61,23 @@ public:
      * @return Human-readable platform name
      */
     static const char* get_platform_name() {
-#ifdef PLATFORM_SAMD51
-        return "SAMD51";
-#elif defined(PLATFORM_RP2040)
-        return "RP2040";
-#elif defined(PLATFORM_ESP32)
-        return "ESP32";
-#elif defined(PLATFORM_STM32)
-        return "STM32";
-#else
-        return "Unknown";
-#endif
+        return PLATFORM_NAME;
+    }
+
+    /**
+     * Get board name string
+     * @return Human-readable board name
+     */
+    static const char* get_board_name() {
+        return BOARD_NAME;
+    }
+
+    /**
+     * Get maximum number of action rules for current board
+     * @return Max action rules supported
+     */
+    static uint8_t get_max_action_rules() {
+        return MAX_ACTION_RULES;
     }
 
 private:

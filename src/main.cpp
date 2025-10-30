@@ -4,6 +4,15 @@
 #include "capabilities/board_capabilities.h"
 #include "actions/action_manager_factory.h"
 
+// Default configuration loader (conditional compilation)
+#ifdef HAS_DEFAULT_CONFIG
+  #ifdef PLATFORM_RP2040
+    #include "capabilities/rp2040/rp2040_config_loader.h"
+  #elif defined(PLATFORM_SAMD51)
+    // Future: #include "capabilities/samd51/samd51_config_loader.h"
+  #endif
+#endif
+
 // Global CAN interface instance
 CANInterface* can_interface = nullptr;
 
@@ -84,6 +93,16 @@ void setup() {
     char details[128];
     snprintf(details, sizeof(details), "%s action manager", ActionManagerFactory::get_platform_name());
     send_status("INFO", "Action manager initialized", details);
+
+    // Initialize with default configuration if enabled
+#ifdef HAS_DEFAULT_CONFIG
+    if (init_default_config(action_manager)) {
+      // Config loader handles flash initialization and default rule writing
+      send_status("INFO", "Default configuration initialized");
+    } else {
+      send_status("WARNING", "Default configuration initialization failed");
+    }
+#endif
 
     // Try to load rules from persistent storage first
     uint8_t loaded = action_manager->load_rules();
@@ -399,6 +418,14 @@ void handle_get_command(const char* param) {
     // Send supported action types
     send_supported_actions();
 
+  } else if (strcmp(param, "rules") == 0) {
+    // Send all loaded action rules
+    if (action_manager) {
+      action_manager->print_rules();
+    } else {
+      send_status("ERROR", "Action manager not initialized");
+    }
+
   } else if (strcmp(param, "name") == 0) {
     // Send device name
     Serial.print("NAME;");
@@ -412,16 +439,28 @@ void handle_get_command(const char* param) {
 
   } else if (strcmp(param, "actiondefs") == 0) {
     // Send action definitions for UI discovery
-    print_all_action_definitions();
+    if (action_manager) {
+      uint8_t count = 0;
+      const ActionDefinition* const* defs = action_manager->get_all_action_definitions(count);
+      for (uint8_t i = 0; i < count; i++) {
+        print_action_definition_json(defs[i]);
+      }
+    } else {
+      send_status("ERROR", "Action manager not initialized");
+    }
 
   } else if (strncmp(param, "actiondef:", 10) == 0) {
     // Get specific action definition by action type number
     uint8_t action_type = atoi(param + 10);
-    const ActionDefinition* def = get_action_definition((ActionType)action_type);
-    if (def) {
-      print_action_definition_json(def);
+    if (action_manager) {
+      const ActionDefinition* def = action_manager->get_action_definition((ActionType)action_type);
+      if (def) {
+        print_action_definition_json(def);
+      } else {
+        send_status("ERROR", "Action definition not found");
+      }
     } else {
-      send_status("ERROR", "Action definition not found");
+      send_status("ERROR", "Action manager not initialized");
     }
   }
 }
@@ -455,10 +494,42 @@ void handle_control_command(const char* action) {
     #else
       NVIC_SystemReset();
     #endif
-    
+
   } else if (strcmp(action, "clear") == 0) {
     can_interface->reset_statistics();
     send_status("INFO", "Statistics cleared");
+
+  } else if (strcmp(action, "resetconfig") == 0) {
+#ifdef HAS_DEFAULT_CONFIG
+    // Erase flash and reload default config
+    send_status("INFO", "Erasing flash and reloading default config");
+
+    // Declare external flash functions
+    extern bool erase_flash_storage();
+
+    if (erase_flash_storage()) {
+      send_status("INFO", "Flash erased successfully");
+
+      // Reload default config
+      if (init_default_config(action_manager)) {
+        send_status("INFO", "Default config reloaded");
+
+        // Load the rules we just wrote
+        uint8_t loaded = action_manager->load_rules();
+        if (loaded > 0) {
+          char details[64];
+          snprintf(details, sizeof(details), "Loaded %d rule(s)", loaded);
+          send_status("INFO", "Config active", details);
+        }
+      } else {
+        send_status("ERROR", "Failed to reload config");
+      }
+    } else {
+      send_status("ERROR", "Failed to erase flash");
+    }
+#else
+    send_status("ERROR", "No default config available");
+#endif
   }
 }
 

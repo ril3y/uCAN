@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <ArduinoJson.h>
 
 /**
  * Platform Capability Flags
@@ -58,6 +59,9 @@ struct BoardCapabilities {
     // CAN-specific
     bool can_hardware;             // True if hardware CAN, false if PIO/software
     const char* can_controller;    // CAN controller type
+    uint8_t can_controllers;       // Number of CAN controllers
+    uint32_t can_max_bitrate;      // Maximum CAN bitrate (bps)
+    uint8_t can_filters;           // Number of hardware CAN filters (0 if none)
 
     // Helper methods
     bool has_capability(PlatformCapability cap) const {
@@ -77,6 +81,9 @@ void send_capabilities_json();       // Send JSON formatted capabilities
 void send_pin_info();                // Send available pin information
 void send_supported_actions();       // Send list of supported action types
 
+// Platform-specific hardware info (implemented per-platform)
+void add_platform_hardware_info(JsonObject& hardware_obj);
+
 // Device name management
 void set_device_name(const char* name);  // Set custom device name
 const char* get_device_name();           // Get current device name
@@ -89,9 +96,21 @@ class ActionManagerBase;  // Forward declaration
 struct ActionRule;        // Forward declaration
 uint8_t load_samd51_default_rules(ActionManagerBase* manager);
 
-// Flash storage functions (SAMD51 only)
+// Flash storage functions (SAMD51)
 bool init_flash_storage();
 bool save_rules_to_flash(const ActionRule* rules, uint8_t count);
 uint8_t load_rules_from_flash(ActionRule* rules, uint8_t max_count);
 bool erase_flash_storage();
+#endif
+
+#ifdef PLATFORM_RP2040
+class ActionManagerBase;  // Forward declaration
+struct ActionRule;        // Forward declaration
+
+// Flash storage functions (RP2040)
+bool init_flash_storage();
+bool save_rules_to_flash(const ActionRule* rules, uint8_t count);
+uint8_t load_rules_from_flash(ActionRule* rules, uint8_t max_count);
+bool erase_flash_storage();
+bool get_flash_storage_stats(uint32_t* used_bytes, uint32_t* total_bytes, uint8_t* rule_capacity);
 #endif

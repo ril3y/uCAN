@@ -43,18 +43,23 @@ uint8_t ActionManagerBase::check_and_execute(const CANMessage& message) {
     // Check each active rule
     for (uint8_t i = 0; i < MAX_ACTION_RULES; i++) {
         if (rules_[i].id != 0 && rules_[i].enabled) {
+            // Skip periodic actions - they are timer-based, not message-triggered
+            if (rules_[i].action == ACTION_CAN_SEND_PERIODIC) {
+                continue;
+            }
+
             if (matches_rule(message, rules_[i])) {
                 bool success = execute_action(rules_[i], message);
 
-                // Report action execution
-                Serial.print("ACTION;");
-                Serial.print(rules_[i].id);
-                Serial.print(";");
-                Serial.print(action_type_to_string(rules_[i].action));
-                Serial.print(";0x");
-                Serial.print(message.id, HEX);
-                Serial.print(";");
-                Serial.println(success ? "OK" : "FAIL");
+                // Report action execution (commented out to reduce serial output)
+                // Serial.print("ACTION;");
+                // Serial.print(rules_[i].id);
+                // Serial.print(";");
+                // Serial.print(action_type_to_string(rules_[i].action));
+                // Serial.print(";0x");
+                // Serial.print(message.id, HEX);
+                // Serial.print(";");
+                // Serial.println(success ? "OK" : "FAIL");
 
                 if (success) {
                     matches++;
@@ -307,22 +312,47 @@ uint8_t ActionManagerBase::parse_and_add_rule(const char* command_str) {
 
     } else if (strcmp(action_type, "CAN_SEND") == 0) {
         rule.action = ACTION_CAN_SEND;
-        if (token_count > param_start_index + 1) {
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index + 1) {
             rule.params.can_send.can_id = strtoul(tokens[param_start_index], nullptr, 16);
+
             // Parse data bytes from tokens[param_start_index + 1] (comma-separated)
             const char* data_str = tokens[param_start_index + 1];
             rule.params.can_send.length = 0;
-            // TODO: Parse comma-separated data bytes
+
+            // Parse comma-separated hex bytes
+            char data_copy[128];
+            strncpy(data_copy, data_str, sizeof(data_copy) - 1);
+            data_copy[sizeof(data_copy) - 1] = '\0';
+
+            char* data_token = strtok(data_copy, ",");
+            while (data_token != nullptr && rule.params.can_send.length < 8) {
+                rule.params.can_send.data[rule.params.can_send.length] = strtoul(data_token, nullptr, 16);
+                rule.params.can_send.length++;
+                data_token = strtok(nullptr, ",");
+            }
         }
 
     } else if (strcmp(action_type, "CAN_SEND_PERIODIC") == 0) {
         rule.action = ACTION_CAN_SEND_PERIODIC;
-        if (token_count > param_start_index + 2) {
+        if (rule.param_source == PARAM_FROM_RULE && token_count > param_start_index + 2) {
             rule.params.can_send.can_id = strtoul(tokens[param_start_index], nullptr, 16);
+
             // Parse data bytes from tokens[param_start_index + 1] (comma-separated)
             const char* data_str = tokens[param_start_index + 1];
             rule.params.can_send.length = 0;
-            // TODO: Parse comma-separated data bytes
+
+            // Parse comma-separated hex bytes
+            char data_copy[128];
+            strncpy(data_copy, data_str, sizeof(data_copy) - 1);
+            data_copy[sizeof(data_copy) - 1] = '\0';
+
+            char* data_token = strtok(data_copy, ",");
+            while (data_token != nullptr && rule.params.can_send.length < 8) {
+                rule.params.can_send.data[rule.params.can_send.length] = strtoul(data_token, nullptr, 16);
+                rule.params.can_send.length++;
+                data_token = strtok(nullptr, ",");
+            }
+
             // Parse interval
             rule.params.can_send.interval_ms = atoi(tokens[param_start_index + 2]);
         }

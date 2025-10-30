@@ -30,16 +30,16 @@ bool RP2040CAN::initialize(const CANConfig& config) {
 
     config_ = config;
     init_time_ms_ = millis();
-    
+
     // Create ACAN2040 instance
     acan_instance_ = new ACAN2040(0, CAN_TX_PIN, CAN_RX_PIN, config.bitrate, F_CPU, acan_rx_callback);
-    
+
     if (!acan_instance_) {
         last_error_ = CAN_ERROR_CONFIG_ERROR;
         return false;
     }
 
-    // Initialize ACAN2040
+    // Initialize ACAN2040 (void return type - sets up PIO, IRQ, and starts can2040)
     acan_instance_->begin();
 
     // Set up acceptance filter
@@ -73,22 +73,39 @@ void RP2040CAN::deinitialize() {
 }
 
 bool RP2040CAN::is_ready() {
-    return initialized_ && !error_state_ && acan_instance_;
+    // Don't block on error_state - allow continuous transmission attempts
+    // The error_state flag is purely informational for status reporting
+    return initialized_ && acan_instance_;
 }
 
 bool RP2040CAN::send_message(const CANMessage& message) {
-    if (!is_ready()) {
+    if (!initialized_ || !acan_instance_) {
         return false;
     }
+
+    // Don't block on error_state_ - allow recovery attempts
+    // The error_state_ flag is informational only
 
     struct can2040_msg can_msg;
     convert_to_acan(message, can_msg);
 
-    if (acan_instance_->ok_to_send() && acan_instance_->send_message(&can_msg)) {
+    // Check if CAN controller is ready to send
+    // Respect this check to avoid flooding the TX queue
+    if (!acan_instance_->ok_to_send()) {
+        // TX queue full or not synchronized - drop this message silently
+        // Don't count as error since this is expected during normal operation
+        return false;
+    }
+
+    // Attempt transmission
+    if (acan_instance_->send_message(&can_msg)) {
         update_tx_stats();
+        error_state_ = false;  // Clear error state on successful TX
         return true;
     } else {
+        // Failed even though ok_to_send said we were ready - this is an error
         update_error_stats(CAN_ERROR_OTHER);
+        error_state_ = true;
         return false;
     }
 }
@@ -163,7 +180,7 @@ void RP2040CAN::acan_rx_callback(struct can2040 *cd, uint32_t notify, struct can
     if (notify == CAN2040_NOTIFY_RX) {
         CANMessage can_message;
         instance_->convert_from_acan(*msg, can_message);
-        
+
         // Apply filtering
         if (instance_->passes_filter(can_message.id)) {
             // Add to receive queue if there's space
@@ -180,20 +197,33 @@ void RP2040CAN::acan_rx_callback(struct can2040 *cd, uint32_t notify, struct can
 }
 
 void RP2040CAN::convert_to_acan(const CANMessage& src, struct can2040_msg& dst) {
-    dst.id = src.id;
+    // can2040 uses bit flags in the ID field for extended/RTR frames
+    dst.id = src.id & 0x1FFFFFFF;  // Mask to 29 bits (CAN ID portion)
+
+    // Set extended frame flag (bit 31) if needed
+    if (src.extended) {
+        dst.id |= CAN2040_ID_EFF;  // 0x80000000
+    }
+
+    // Set RTR flag (bit 30) if needed
+    if (src.remote) {
+        dst.id |= CAN2040_ID_RTR;  // 0x40000000
+    }
+
     dst.dlc = src.length;
-    
+
     // Copy data
     memcpy(dst.data, src.data, min(src.length, (uint8_t)8));
 }
 
 void RP2040CAN::convert_from_acan(const struct can2040_msg& src, CANMessage& dst) {
-    dst.id = src.id;
-    dst.extended = (src.id > 0x7FF);  // Simple extended frame detection
-    dst.remote = false;  // ACAN2040 doesn't clearly expose RTR flag
+    // Extract CAN ID (bits 0-28) and flags from can2040 format
+    dst.id = src.id & 0x1FFFFFFF;  // Mask to 29 bits
+    dst.extended = (src.id & CAN2040_ID_EFF) != 0;  // Check bit 31
+    dst.remote = (src.id & CAN2040_ID_RTR) != 0;    // Check bit 30
     dst.length = src.dlc;
     dst.timestamp = get_timestamp_ms();
-    
+
     // Copy data
     memcpy(dst.data, src.data, min(src.dlc, (uint8_t)8));
 }
@@ -209,16 +239,16 @@ bool RP2040CAN::passes_filter(uint32_t can_id) {
 }
 
 void RP2040CAN::handle_error(uint32_t notify) {
-    error_state_ = true;
-    
     switch (notify) {
         case CAN2040_NOTIFY_ERROR:
+            error_state_ = true;
             update_error_stats(CAN_ERROR_OTHER);
             break;
         case CAN2040_NOTIFY_TX:
-            // TX notification, not an error
+            // TX notification - this is NOT an error, it's a success confirmation
             break;
         default:
+            error_state_ = true;
             update_error_stats(CAN_ERROR_OTHER);
             break;
     }

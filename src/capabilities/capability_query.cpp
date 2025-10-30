@@ -2,6 +2,10 @@
 #include <ArduinoJson.h>
 #include <string.h>
 #include "board_capabilities.h"
+#include "../actions/action_manager_base.h"
+
+// External reference to action manager (defined in main.cpp)
+extern ActionManagerBase* action_manager;
 
 // Device name storage (mutable, can be changed at runtime)
 char device_name[MAX_DEVICE_NAME_LENGTH] = "";  // Empty = use default board name
@@ -10,7 +14,7 @@ char device_name[MAX_DEVICE_NAME_LENGTH] = "";  // Empty = use default board nam
  * Send capabilities as JSON response
  *
  * Format: CAPS;{json object}
- * Example: CAPS;{"board":"Feather M4 CAN","chip":"ATSAME51",...}
+ * Example: CAPS;{"board":"<device name>","chip":"<chip name>",...}
  */
 void send_capabilities_json() {
     // Create JSON document (stack allocated for efficiency)
@@ -24,7 +28,7 @@ void send_capabilities_json() {
     #ifdef F_CPU
         doc["clock_mhz"] = F_CPU / 1000000.0;
     #else
-        doc["clock_mhz"] = 120;  // Default assumption for SAMD51
+        doc["clock_mhz"] = 0;  // Unknown if F_CPU not defined
     #endif
 
     // Memory info in KB
@@ -33,7 +37,7 @@ void send_capabilities_json() {
 
     // Protocol and firmware versions
     doc["protocol_version"] = "2.0";
-    doc["firmware_version"] = "2.1.1";
+    doc["firmware_version"] = "2.2.0";
 
     // GPIO info as object
     JsonObject gpio = doc["gpio"].to<JsonObject>();
@@ -42,12 +46,16 @@ void send_capabilities_json() {
     gpio["adc"] = platform_capabilities.adc_channels;
     gpio["dac"] = platform_capabilities.dac_channels;
 
-    // CAN info with required fields
+    // Platform-specific hardware info (implemented per-platform)
+    JsonObject hardware = doc["hardware"].to<JsonObject>();
+    add_platform_hardware_info(hardware);
+
+    // CAN info with required fields (platform-specific values)
     JsonObject can = doc["can"].to<JsonObject>();
-    can["controllers"] = 1;  // SAMD51 has 1 CAN controller
-    can["max_bitrate"] = 1000000;  // 1Mbps max
-    can["fd_capable"] = false;  // CAN-FD not supported
-    can["filters"] = 28;  // SAMD51 CAN has 28 filters
+    can["controllers"] = platform_capabilities.can_controllers;
+    can["max_bitrate"] = platform_capabilities.can_max_bitrate;
+    can["fd_capable"] = false;  // CAN-FD not supported on any current platform
+    can["filters"] = platform_capabilities.can_filters;
 
     // Action system info
     doc["max_rules"] = platform_capabilities.max_action_rules;  // Platform-specific rule limit from board config
@@ -166,11 +174,16 @@ void set_device_name(const char* name) {
     device_name[MAX_DEVICE_NAME_LENGTH - 1] = '\0';
 
     // Save to persistent storage
-    save_device_name();
+    bool saved = save_device_name();
 
-    // Send status update
+    // Send status update with persistence info
     Serial.print("STATUS;NAME_SET;Device name set to: ");
-    Serial.println(device_name);
+    Serial.print(device_name);
+    if (saved) {
+        Serial.println(" (saved to flash)");
+    } else {
+        Serial.println(" (RAM only, not persisted)");
+    }
 }
 
 /**
@@ -188,38 +201,40 @@ const char* get_device_name() {
 /**
  * Load device name from persistent storage
  *
- * @return true if name was loaded
+ * Device name is loaded automatically with rules on startup,
+ * so this function just returns true if a name is set.
+ *
+ * @return true if custom name is loaded (non-empty)
  */
 bool load_device_name() {
-#if defined(PLATFORM_SAMD51)
-    // SAMD51: Use EEPROM emulation or Flash storage
-    // For now, just return false (not implemented)
-    // TODO: Implement Flash storage
-    return false;
-#elif defined(PLATFORM_RP2040)
-    // RP2040: Use Flash storage
-    // TODO: Implement Flash storage
-    return false;
-#else
-    return false;
-#endif
+    // Device name is loaded automatically when rules are loaded
+    // This happens in main.cpp setup() via action_manager->load_rules()
+    return (device_name[0] != '\0');
 }
 
 /**
  * Save device name to persistent storage
  *
- * @return true if name was saved
+ * Triggers a flash write by saving all rules (which includes device name).
+ * The device name is stored in the flash header alongside rules.
+ *
+ * @return true if name was saved successfully
  */
 bool save_device_name() {
+    if (!action_manager) {
+        return false;  // Action manager not initialized yet
+    }
+
 #if defined(PLATFORM_SAMD51)
-    // SAMD51: Use EEPROM emulation or Flash storage
-    // For now, just return false (not implemented)
-    // TODO: Implement Flash storage
-    return false;
+    // SAMD51: Device name is saved in FlashHeader alongside rules
+    // Trigger a rules save which will save the device name too
+    return action_manager->save_rules();
+
 #elif defined(PLATFORM_RP2040)
-    // RP2040: Use Flash storage
-    // TODO: Implement Flash storage
-    return false;
+    // RP2040: Device name is saved in FlashHeader alongside rules
+    // Trigger a rules save which will save the device name too
+    return action_manager->save_rules();
+
 #else
     return false;
 #endif

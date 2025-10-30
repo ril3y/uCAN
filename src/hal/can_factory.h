@@ -1,8 +1,9 @@
 #pragma once
 
 #include "can_interface.h"
-#include "platform_config.h"
+#include "../boards/board_registry.h"
 
+// Include platform-specific CAN implementations based on detected platform
 #ifdef PLATFORM_RP2040
     #include "rp2040_can.h"
 #endif
@@ -11,8 +12,19 @@
     #include "samd51_can.h"
 #endif
 
+#ifdef PLATFORM_ESP32
+    #include "esp32_can.h"
+#endif
+
+#ifdef PLATFORM_STM32
+    #include "stm32_can.h"
+#endif
+
 /**
  * Factory class to create the appropriate CAN interface for the current platform
+ *
+ * This factory uses the centralized board registry to automatically select
+ * the correct CAN implementation based on compile-time platform detection.
  */
 class CANFactory {
 public:
@@ -25,6 +37,10 @@ public:
             return new RP2040CAN();
         #elif defined(PLATFORM_SAMD51)
             return new SAMD51CAN();
+        #elif defined(PLATFORM_ESP32)
+            return new ESP32CAN();
+        #elif defined(PLATFORM_STM32)
+            return new STM32CAN();
         #else
             #error "Unsupported platform - no CAN implementation available"
         #endif
@@ -39,7 +55,16 @@ public:
     }
 
     /**
+     * Get the board name for the current build
+     * @return Board name string
+     */
+    static const char* get_board_name() {
+        return BOARD_NAME;
+    }
+
+    /**
      * Get default configuration for the current platform
+     * Uses board-specific defaults from board registry
      * @return Default CANConfig structure
      */
     static CANConfig get_default_config() {

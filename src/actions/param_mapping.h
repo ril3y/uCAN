@@ -238,25 +238,12 @@ inline bool extract_bool(const uint8_t* can_data, const ParamMapping& mapping) {
 // ============================================================================
 // Action Definition Registry
 // ============================================================================
-
-/**
- * Get action definition by action type
- *
- * Platform-specific implementations provide this function to return
- * Flash-based action definitions.
- *
- * @param action Action type to look up
- * @return Pointer to action definition (Flash), or nullptr if not found
- */
-const ActionDefinition* get_action_definition(ActionType action);
-
-/**
- * Get all action definitions for this platform
- *
- * @param count Output: Number of action definitions returned
- * @return Pointer to array of ActionDefinition pointers (Flash)
- */
-const ActionDefinition* const* get_all_action_definitions(uint8_t& count);
+// NOTE: Action definition retrieval is now handled by ActionManagerBase
+// via pure virtual methods:
+//   - get_action_definition(ActionType action) const
+//   - get_all_action_definitions(uint8_t& count) const
+// Each platform (RP2040ActionManager, SAMD51ActionManager) implements these.
+// ============================================================================
 
 /**
  * Print action definition in compact JSON format
@@ -266,13 +253,6 @@ const ActionDefinition* const* get_all_action_definitions(uint8_t& count);
  * @param def Action definition to print
  */
 void print_action_definition_json(const ActionDefinition* def);
-
-/**
- * Print all action definitions for this platform
- *
- * Outputs multiple ACTIONDEF lines, one per action.
- */
-void print_all_action_definitions();
 
 // ============================================================================
 // Helper Functions

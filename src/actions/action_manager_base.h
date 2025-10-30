@@ -144,6 +144,21 @@ public:
      */
     bool execute_can_send_action(uint32_t can_id, const uint8_t* data, uint8_t length);
 
+    /**
+     * Get action definition for specific action type
+     * Platform must provide definitions for all supported actions
+     * @param action The action type to query
+     * @return Pointer to ActionDefinition, or nullptr if not supported
+     */
+    virtual const ActionDefinition* get_action_definition(ActionType action) const = 0;
+
+    /**
+     * Get all action definitions supported by this platform
+     * @param count Output parameter - number of definitions returned
+     * @return Array of ActionDefinition pointers
+     */
+    virtual const ActionDefinition* const* get_all_action_definitions(uint8_t& count) const = 0;
+
 protected:
     // Platform-specific action execution (pure virtual methods)
 

@@ -1,65 +1,42 @@
 #pragma once
 
-// Platform detection based on compiler defines
-#if defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
-    #define PLATFORM_RP2040
-    #define PLATFORM_NAME "Raspberry Pi Pico"
-#elif defined(ARDUINO_ADAFRUIT_FEATHER_M4_CAN)
-    #define PLATFORM_SAMD51
-    #define PLATFORM_NAME "Adafruit Feather M4 CAN"
-#elif defined(ARDUINO_ARCH_ESP32)
-    #define PLATFORM_ESP32
-    #define PLATFORM_NAME "ESP32"
-#elif defined(ARDUINO_ARCH_STM32)
-    #define PLATFORM_STM32
-    #define PLATFORM_NAME "STM32"
-#else
-    #error "Unsupported platform - please add platform detection"
-#endif
+/**
+ * @file platform_config.h
+ * @brief Legacy platform configuration header - DEPRECATED
+ *
+ * This file is deprecated in favor of the centralized board registry system.
+ * It now simply includes board_registry.h for backward compatibility.
+ *
+ * All new code should include "../boards/board_registry.h" directly.
+ */
 
-// Platform-specific pin configurations
+// Include the new centralized board registry
+#include "../boards/board_registry.h"
+
+// Legacy compatibility - these are now provided by board_registry.h
+// Platform defines: PLATFORM_RP2040, PLATFORM_SAMD51, PLATFORM_ESP32, etc.
+// Pin macros: CAN_TX_PIN, CAN_RX_PIN, NEOPIXEL_PIN, etc.
+// Default values: DEFAULT_CAN_BITRATE, DEFAULT_SERIAL_BAUD, etc.
+// Buffer sizes: CAN_RX_BUFFER_SIZE, CAN_TX_BUFFER_SIZE
+
+// Platform-specific compatibility defines
 #ifdef PLATFORM_RP2040
-    // RP2040 with MCP2551 transceiver
-    #define CAN_TX_PIN 4    // GP4 -> MCP2551 CTX
-    #define CAN_RX_PIN 5    // GP5 -> MCP2551 CRX
     #define CAN_USES_PIO true
     #define CAN_PIO_INSTANCE pio0
     #define CAN_PIO_SM 0
 #endif
 
 #ifdef PLATFORM_SAMD51
-    // SAMD51 built-in CAN peripheral
-    #define CAN_TX_PIN PIN_CAN_TX   // Defined in variant.h
-    #define CAN_RX_PIN PIN_CAN_RX   // Defined in variant.h
     #define CAN_USES_PIO false
     #define CAN_PERIPHERAL CAN0     // Built-in CAN0 peripheral
 #endif
 
 #ifdef PLATFORM_ESP32
-    // ESP32 TWAI (CAN) peripheral
-    #define CAN_TX_PIN GPIO_NUM_5
-    #define CAN_RX_PIN GPIO_NUM_4
     #define CAN_USES_PIO false
 #endif
 
 #ifdef PLATFORM_STM32
-    // STM32 bxCAN peripheral
-    #define CAN_TX_PIN PB9
-    #define CAN_RX_PIN PB8
     #define CAN_USES_PIO false
-#endif
-
-// Default CAN configuration
-#define DEFAULT_CAN_BITRATE 500000  // 500kbps
-#define DEFAULT_SERIAL_BAUD 115200
-
-// Buffer sizes (platform-dependent)
-#ifdef PLATFORM_RP2040
-    #define CAN_RX_BUFFER_SIZE 32
-    #define CAN_TX_BUFFER_SIZE 16
-#else
-    #define CAN_RX_BUFFER_SIZE 64
-    #define CAN_TX_BUFFER_SIZE 32
 #endif
 
 // Version information

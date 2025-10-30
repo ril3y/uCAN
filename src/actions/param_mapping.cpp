@@ -156,41 +156,14 @@ void print_action_definition_json(const ActionDefinition* def) {
     Serial.println("}");
 }
 
-void print_all_action_definitions() {
-    uint8_t count = 0;
-    const ActionDefinition* const* defs = get_all_action_definitions(count);
-
-    if (!defs || count == 0) {
-        Serial.println("STATUS;INFO;No action definitions available");
-        return;
-    }
-
-    for (uint8_t i = 0; i < count; i++) {
-        print_action_definition_json(defs[i]);
-    }
-}
-
 // ============================================================================
-// Default Implementations (Weak Symbols)
+// NOTE: Action definition functions removed
 // ============================================================================
-
-/**
- * Default implementation of get_action_definition
- * Platform-specific implementations should override this.
- */
-__attribute__((weak))
-const ActionDefinition* get_action_definition(ActionType action) {
-    // No definitions available in default implementation
-    (void)action;
-    return nullptr;
-}
-
-/**
- * Default implementation of get_all_action_definitions
- * Platform-specific implementations should override this.
- */
-__attribute__((weak))
-const ActionDefinition* const* get_all_action_definitions(uint8_t& count) {
-    count = 0;
-    return nullptr;
-}
+// These are now pure virtual methods in ActionManagerBase:
+//   - get_action_definition(ActionType action) const = 0
+//   - get_all_action_definitions(uint8_t& count) const = 0
+//
+// Each platform implements these methods in their action manager class:
+//   - RP2040ActionManager (rp2040_action_defs.cpp)
+//   - SAMD51ActionManager (samd51_action_defs.cpp)
+// ============================================================================

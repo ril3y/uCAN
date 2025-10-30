@@ -59,11 +59,10 @@ private:
     uint8_t neopixel_brightness_;
     uint32_t last_activity_time_;
     uint32_t neopixel_clear_time_;  // When to clear the NeoPixel
-    
-    // Pin definitions for Feather M4 CAN
-    static const uint8_t NEOPIXEL_PIN = 8;
-    static const uint8_t NEOPIXEL_POWER_PIN = 2; // Based on Adafruit documentation
-    
+
+    // Note: Pin definitions now come from board registry (NEOPIXEL_PIN macro)
+    // No need to hardcode here anymore
+
     // Static callback function for CAN library
     static void can_rx_callback(int packet_size);
     

@@ -7,6 +7,14 @@
 #include <ACAN2040.h>
 #include <queue>
 
+// can2040 ID field bit flags
+#ifndef CAN2040_ID_EFF
+#define CAN2040_ID_EFF 0x80000000  // Extended Frame Flag (bit 31)
+#endif
+#ifndef CAN2040_ID_RTR
+#define CAN2040_ID_RTR 0x40000000  // Remote Transmission Request (bit 30)
+#endif
+
 /**
  * RP2040-specific CAN implementation using ACAN2040 library
  * 

@@ -44,34 +44,34 @@
 #include "../board_config.h"
 
 // LilyGo T-CAN485 pin configuration
+// Based on official pinmap: https://github.com/ril3y/T-CAN485
 const BoardPinConfig t_can485_pins = {
     // CAN interface pins (TWAI + SN65HVD231 transceiver)
-    // Note: Actual pins need to be determined from schematic
-    // Typical ESP32 TWAI pins are GPIO4/5, but T-CAN485 may differ
-    .can_tx_pin = 5,              // TODO: Verify from T-CAN485 schematic
-    .can_rx_pin = 4,              // TODO: Verify from T-CAN485 schematic
-    .can_standby_pin = PIN_NOT_AVAILABLE,
-    .can_speed_mode_pin = PIN_NOT_AVAILABLE, // TODO: Check if SN65HVD231 Rs is connected
+    // Verified from official T-CAN485 pinmap
+    .can_tx_pin = 27,             // IO27 -> CAN TX (TWAI TX)
+    .can_rx_pin = 26,             // IO26 -> CAN RX (TWAI RX)
+    .can_standby_pin = 23,        // IO23 -> CAN_SE (SN65HVD231 standby/slope)
+    .can_speed_mode_pin = 23,     // Same as standby (CAN_SE controls slope/standby)
 
     // ME2107 boost converter enable pin
-    .power_enable_pin = 16,       // GPIO16 -> ME2107 EN
+    .power_enable_pin = 16,       // GPIO16 -> ME2107 EN (assumed from docs)
 
     // WS2812 RGB NeoPixel LED
-    .neopixel_pin = 4,            // GPIO4 -> WS2812 Data
+    .neopixel_pin = 4,            // IO04 -> WS2812 Data
     .neopixel_power_pin = PIN_NOT_AVAILABLE,  // No separate power control
     .status_led_pin = 4,          // WS2812 doubles as status LED
 
-    // SD card interface
-    .sd_cs_pin = 13,              // GPIO13 -> SD CS
-    .sd_miso_pin = 2,             // GPIO2 -> SD MISO
-    .sd_mosi_pin = 15,            // GPIO15 -> SD MOSI
-    .sd_sclk_pin = 14,            // GPIO14 -> SD SCLK
+    // SD card interface (SPI)
+    .sd_cs_pin = 13,              // IO13 -> SD_CS
+    .sd_miso_pin = 2,             // IO02 -> SD_MISO
+    .sd_mosi_pin = 15,            // IO15 -> SD_MOSI
+    .sd_sclk_pin = 14,            // IO14 -> SD_SCLK
 
     // RS485 interface (MAX13487EESA+)
-    .rs485_tx_pin = 22,           // GPIO22 -> RS485 TX
-    .rs485_rx_pin = 21,           // GPIO21 -> RS485 RX
-    .rs485_enable_pin = 9,        // GPIO9 -> RS485 EN (DE/RE control)
-    // Note: GPIO17 is RS485 callback pin (not in standard config)
+    .rs485_tx_pin = 22,           // IO22 -> RS485_TX
+    .rs485_rx_pin = 21,           // IO21 -> RS485_RX
+    .rs485_enable_pin = 17,       // IO17 -> RS485_EN (DE/RE control)
+    // Note: IO19 is RS485_SE (speed/enable select)
 };
 
 // T-CAN485 memory configuration
