@@ -96,7 +96,10 @@ public:
 
 TPanelBoard::TPanelBoard()
     : sd_available_(false)
-    , display_initialized_(false) {
+    , display_initialized_(false)
+    , last_pulse_(0)
+    , pulse_direction_(1)
+    , current_brightness_(128) {
 }
 
 TPanelBoard::~TPanelBoard() {
@@ -147,6 +150,26 @@ void TPanelBoard::register_custom_commands(CustomCommandRegistry& registry) {
 }
 
 void TPanelBoard::update_periodic() {
+    // Pulse LCD backlight to show we're alive
+    if (display_initialized_ && (millis() - last_pulse_ > 20)) {  // Update every 20ms for smooth pulse
+        if (pulse_direction_ == 1) {
+            // Brightening
+            current_brightness_ += 2;
+            if (current_brightness_ >= 200) {
+                pulse_direction_ = 0;  // Start dimming
+            }
+        } else {
+            // Dimming
+            current_brightness_ -= 2;
+            if (current_brightness_ <= 56) {
+                pulse_direction_ = 1;  // Start brightening
+            }
+        }
+        
+        set_backlight(current_brightness_);
+        last_pulse_ = millis();
+    }
+    
     // Optional: Update display with CAN statistics
     // Optional: Handle touch events
 }

@@ -98,7 +98,9 @@ public:
 
 TCAN485Board::TCAN485Board()
     : neopixel_(nullptr)
-    , sd_available_(false) {
+    , sd_available_(false)
+    , last_blink_(0)
+    , blink_color_index_(0) {
 }
 
 TCAN485Board::~TCAN485Board() {
@@ -153,7 +155,22 @@ void TCAN485Board::register_custom_commands(CustomCommandRegistry& registry) {
 }
 
 void TCAN485Board::update_periodic() {
-    // Optional: Blink NeoPixel based on CAN activity
+    // Blink NeoPixel to show we're alive - cycle through colors
+    if (neopixel_ && (millis() - last_blink_ > 1000)) {
+        const uint8_t colors[][3] = {
+            {0, 255, 0},    // Green
+            {0, 0, 255},    // Blue
+            {255, 0, 255},  // Magenta
+            {0, 255, 255}   // Cyan
+        };
+        
+        blink_color_index_ = (blink_color_index_ + 1) % 4;
+        set_neopixel_status(colors[blink_color_index_][0],
+                           colors[blink_color_index_][1],
+                           colors[blink_color_index_][2]);
+        last_blink_ = millis();
+    }
+    
     // Optional: Check RS485 for incoming messages
 }
 

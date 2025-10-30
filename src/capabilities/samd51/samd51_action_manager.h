@@ -4,22 +4,24 @@
 
 #ifdef PLATFORM_SAMD51
 
-// Forward declaration for NeoPixel (avoid including full header)
-class Adafruit_NeoPixel;
+// Forward declarations
+class BoardInterface;
 
 /**
  * SAMD51ActionManager
  *
- * Platform-specific action manager for Adafruit Feather M4 CAN.
+ * Platform-specific action manager for SAMD51-based boards (Feather M4 CAN, etc.).
  * Implements SAMD51-specific features:
- * - NeoPixel visual feedback (built-in RGB LED)
  * - 12-bit PWM output
+ * - 12-bit ADC input (dual 1MSPS ADCs)
  * - 12-bit DAC output (2 channels)
  * - Flash-based rule persistence
  *
  * Custom commands registered:
- * - neopixel:R:G:B[:BRIGHTNESS] - Direct NeoPixel control
  * - dac:CHANNEL:VALUE - Set DAC output (0-4095)
+ *
+ * Note: NeoPixel management is now handled by board-specific implementations
+ * (e.g., FeatherM4CANBoard) to keep platform and board concerns separated.
  */
 class SAMD51ActionManager : public ActionManagerBase {
 public:
@@ -27,6 +29,7 @@ public:
     virtual ~SAMD51ActionManager();
 
     bool initialize(CANInterface* can_if) override;
+    void update_board_periodic() override;
 
 protected:
     // Platform-specific action execution
@@ -46,8 +49,12 @@ protected:
     const ActionDefinition* get_action_definition(ActionType action) const override;
     const ActionDefinition* const* get_all_action_definitions(uint8_t& count) const override;
 
+    // Platform reset
+    void platform_reset() override;
+
 private:
-    Adafruit_NeoPixel* neopixel_;  // Built-in NeoPixel instance
+    // Board-specific implementation (optional)
+    BoardInterface* board_impl_;
 };
 
 #endif // PLATFORM_SAMD51

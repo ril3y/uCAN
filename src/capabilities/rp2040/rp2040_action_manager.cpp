@@ -3,7 +3,10 @@
 #ifdef PLATFORM_RP2040
 
 #include <Arduino.h>
+#include <hardware/watchdog.h>
 #include "../../capabilities/board_capabilities.h"
+#include "../../boards/board_interface.h"
+#include "../../boards/board_registry.h"
 
 // ============================================================================
 // Custom Command Implementations
@@ -179,11 +182,38 @@ public:
 
 RP2040ActionManager::RP2040ActionManager()
     : ActionManagerBase()
+    , board_impl_(nullptr)
 {
 }
 
 RP2040ActionManager::~RP2040ActionManager() {
-    // Nothing to clean up
+    if (board_impl_) {
+        delete board_impl_;
+        board_impl_ = nullptr;
+    }
+}
+
+bool RP2040ActionManager::initialize(CANInterface* can_if) {
+    // Call base class initialization
+    if (!ActionManagerBase::initialize(can_if)) {
+        return false;
+    }
+
+    // Create board-specific implementation (if available)
+    board_impl_ = BoardFactory::create();
+    if (board_impl_) {
+        if (!board_impl_->initialize(this)) {
+            Serial.println("WARNING;Board-specific initialization failed");
+            delete board_impl_;
+            board_impl_ = nullptr;
+        } else {
+            Serial.print("STATUS;INFO;Board: ");
+            Serial.println(board_impl_->get_board_name());
+        }
+    }
+
+    Serial.println("RP2040 Action Manager initialized");
+    return true;
 }
 
 bool RP2040ActionManager::execute_gpio_action(ActionType type, uint8_t pin) {
@@ -275,6 +305,16 @@ void RP2040ActionManager::register_custom_commands() {
     // Register GPIO pulse command
     static GPIOPulseCommand gpio_pulse_cmd;
     custom_commands_.register_command(&gpio_pulse_cmd);
+}
+
+void RP2040ActionManager::update_board_periodic() {
+    if (board_impl_) {
+        board_impl_->update_periodic();
+    }
+}
+
+void RP2040ActionManager::platform_reset() {
+    watchdog_reboot(0, 0, 0);
 }
 
 #endif // PLATFORM_RP2040

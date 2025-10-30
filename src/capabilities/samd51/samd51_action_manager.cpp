@@ -3,79 +3,18 @@
 #ifdef PLATFORM_SAMD51
 
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
 #include "../../capabilities/board_capabilities.h"
+#include "../../boards/board_interface.h"
+#include "../../boards/board_registry.h"
+
+// Include board implementation for NeoPixel delegation (if Feather M4 CAN)
+#ifdef ARDUINO_ADAFRUIT_FEATHER_M4_CAN
+#include "../../boards/samd51/board_impl.h"
+#endif
 
 // ============================================================================
 // Custom Command Implementations
 // ============================================================================
-
-/**
- * NeoPixel Custom Command
- * Format: neopixel:R:G:B[:BRIGHTNESS]
- * Example: neopixel:255:0:0:128 (red at 50% brightness)
- */
-class NeoPixelCommand : public CustomCommand {
-public:
-    NeoPixelCommand(Adafruit_NeoPixel* pixel) : pixel_(pixel) {}
-
-    const char* get_name() const override { return "neopixel"; }
-    const char* get_description() const override {
-        return "Set built-in NeoPixel color and brightness";
-    }
-    const char* get_category() const override { return "Visual"; }
-
-    const ParamDef* get_parameters(uint8_t& count) const override {
-        static const ParamDef params[] = {
-            {"red", "Red component (0-255)", PARAM_UINT8, 0, 255, nullptr, true},
-            {"green", "Green component (0-255)", PARAM_UINT8, 0, 255, nullptr, true},
-            {"blue", "Blue component (0-255)", PARAM_UINT8, 0, 255, nullptr, true},
-            {"brightness", "Brightness level (0-255)", PARAM_UINT8, 0, 255, nullptr, false}
-        };
-        count = 4;
-        return params;
-    }
-
-    bool execute(const char* params) override {
-        if (!pixel_ || !params) return false;
-
-        // Parse R:G:B[:BRIGHTNESS]
-        char buffer[64];
-        strncpy(buffer, params, sizeof(buffer) - 1);
-        buffer[sizeof(buffer) - 1] = '\0';
-
-        char* tokens[4];
-        uint8_t token_count = 0;
-        char* ptr = buffer;
-
-        while (token_count < 4 && ptr && *ptr != '\0') {
-            tokens[token_count++] = ptr;
-            ptr = strchr(ptr, ':');
-            if (ptr) {
-                *ptr = '\0';
-                ptr++;
-            }
-        }
-
-        if (token_count < 3) return false;
-
-        uint8_t r = atoi(tokens[0]);
-        uint8_t g = atoi(tokens[1]);
-        uint8_t b = atoi(tokens[2]);
-        uint8_t brightness = (token_count >= 4) ? atoi(tokens[3]) : 255;
-
-        if (brightness > 0 && brightness < 255) {
-            pixel_->setBrightness(brightness);
-        }
-        pixel_->setPixelColor(0, pixel_->Color(r, g, b));
-        pixel_->show();
-
-        return true;
-    }
-
-private:
-    Adafruit_NeoPixel* pixel_;
-};
 
 /**
  * DAC Custom Command
@@ -133,31 +72,44 @@ public:
 
 SAMD51ActionManager::SAMD51ActionManager()
     : ActionManagerBase()
-    , neopixel_(nullptr)
+    , board_impl_(nullptr)
 {
 }
 
 SAMD51ActionManager::~SAMD51ActionManager() {
-    if (neopixel_) {
-        delete neopixel_;
-        neopixel_ = nullptr;
+    if (board_impl_) {
+        delete board_impl_;
+        board_impl_ = nullptr;
     }
 }
 
 bool SAMD51ActionManager::initialize(CANInterface* can_if) {
-    // Initialize NeoPixel if available
-    if (platform_capabilities.neopixel_available) {
-        neopixel_ = new Adafruit_NeoPixel(1, platform_capabilities.neopixel_pin, NEO_GRB + NEO_KHZ800);
-        if (neopixel_) {
-            neopixel_->begin();
-            neopixel_->setBrightness(50);  // Default 20% brightness
-            neopixel_->setPixelColor(0, neopixel_->Color(0, 0, 0));
-            neopixel_->show();
+    // Call base class initialization
+    if (!ActionManagerBase::initialize(can_if)) {
+        return false;
+    }
+
+    // Create board-specific implementation (if available)
+    board_impl_ = BoardFactory::create();
+    if (board_impl_) {
+        if (!board_impl_->initialize(this)) {
+            Serial.println("WARNING;Board-specific initialization failed");
+            delete board_impl_;
+            board_impl_ = nullptr;
+        } else {
+            // Register board-specific custom commands
+            board_impl_->register_custom_commands(custom_commands_);
         }
     }
 
-    // Call base class initialization
-    return ActionManagerBase::initialize(can_if);
+    return true;
+}
+
+void SAMD51ActionManager::update_board_periodic() {
+    // Update board-specific periodic tasks
+    if (board_impl_) {
+        board_impl_->update_periodic();
+    }
 }
 
 bool SAMD51ActionManager::execute_gpio_action(ActionType type, uint8_t pin) {
@@ -203,16 +155,16 @@ bool SAMD51ActionManager::execute_pwm_action(uint8_t pin, uint8_t duty) {
 }
 
 bool SAMD51ActionManager::execute_neopixel_action(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
-    if (!platform_capabilities.has_capability(CAP_NEOPIXEL) || !neopixel_) {
-        return false;
+    // Delegate to board implementation if available
+#ifdef ARDUINO_ADAFRUIT_FEATHER_M4_CAN
+    if (board_impl_) {
+        FeatherM4CANBoard* feather_board = static_cast<FeatherM4CANBoard*>(board_impl_);
+        return feather_board->set_neopixel(r, g, b, brightness);
     }
+#endif
 
-    if (brightness > 0) {
-        neopixel_->setBrightness(brightness);
-    }
-    neopixel_->setPixelColor(0, neopixel_->Color(r, g, b));
-    neopixel_->show();
-    return true;
+    // No NeoPixel support without board implementation
+    return false;
 }
 
 bool SAMD51ActionManager::execute_adc_read_send_action(uint8_t adc_pin, uint32_t response_id) {
@@ -251,17 +203,17 @@ uint8_t SAMD51ActionManager::load_rules_impl() {
 }
 
 void SAMD51ActionManager::register_custom_commands() {
-    // Register NeoPixel command if available
-    if (neopixel_) {
-        static NeoPixelCommand neopixel_cmd(neopixel_);
-        custom_commands_.register_command(&neopixel_cmd);
-    }
-
     // Register DAC command if available
     if (platform_capabilities.has_capability(CAP_GPIO_DAC)) {
         static DACCommand dac_cmd;
         custom_commands_.register_command(&dac_cmd);
     }
+
+    // Board-specific commands are registered in initialize()
+}
+
+void SAMD51ActionManager::platform_reset() {
+    NVIC_SystemReset();  // SAMD51 system reset
 }
 
 #endif // PLATFORM_SAMD51

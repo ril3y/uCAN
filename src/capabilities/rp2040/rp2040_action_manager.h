@@ -4,6 +4,9 @@
 
 #ifdef PLATFORM_RP2040
 
+// Forward declarations
+class BoardInterface;
+
 /**
  * RP2040ActionManager
  *
@@ -23,6 +26,8 @@ public:
     RP2040ActionManager();
     virtual ~RP2040ActionManager();
 
+    bool initialize(CANInterface* can_if) override;
+
 protected:
     // Platform-specific action execution
     bool execute_gpio_action(ActionType type, uint8_t pin) override;
@@ -40,6 +45,16 @@ protected:
     // Action definition methods
     const ActionDefinition* get_action_definition(ActionType action) const override;
     const ActionDefinition* const* get_all_action_definitions(uint8_t& count) const override;
+
+    // Platform-specific system reset
+    void platform_reset() override;
+
+    // Board periodic update
+    void update_board_periodic() override;
+
+private:
+    // Board-specific implementation (optional)
+    BoardInterface* board_impl_;
 };
 
 #endif // PLATFORM_RP2040

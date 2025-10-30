@@ -36,6 +36,10 @@ private:
     Adafruit_NeoPixel* neopixel_;
     bool sd_available_;
 
+    // Periodic LED blink state
+    unsigned long last_blink_;
+    uint8_t blink_color_index_;
+
     // Helper methods
     bool init_power_management();
     bool init_rs485();

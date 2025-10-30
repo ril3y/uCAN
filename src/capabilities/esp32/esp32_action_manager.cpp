@@ -330,6 +330,17 @@ const ActionDefinition* const* ESP32ActionManager::get_all_action_definitions(ui
     return esp32_get_all_action_definitions(count);
 }
 
+// Platform-specific system reset
+void ESP32ActionManager::update_board_periodic() {
+    if (board_impl_) {
+        board_impl_->update_periodic();
+    }
+}
+
+void ESP32ActionManager::platform_reset() {
+    ESP.restart();
+}
+
 // Private Helper Methods
 
 uint8_t ESP32ActionManager::allocate_pwm_channel(uint8_t pin) {

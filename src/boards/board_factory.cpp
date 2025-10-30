@@ -35,6 +35,14 @@
     #include "t_panel/board_impl.h"
 #endif
 
+#if defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+    #include "rp2040/board_impl.h"
+#endif
+
+#ifdef ARDUINO_ADAFRUIT_FEATHER_M4_CAN
+    #include "samd51/board_impl.h"
+#endif
+
 // Future board implementations:
 // Add new boards here following the same pattern
 //
@@ -83,6 +91,14 @@ BoardInterface* BoardFactory::create() {
     #elif defined(BOARD_T_PANEL)
         return new TPanelBoard();
 
+    #elif defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+        // Raspberry Pi Pico board implementation
+        return new RPiPicoBoard();
+
+    #elif defined(ARDUINO_ADAFRUIT_FEATHER_M4_CAN)
+        // Adafruit Feather M4 CAN board implementation
+        return new FeatherM4CANBoard();
+
     // Add future board implementations here using #elif:
     //
     // #elif defined(BOARD_CUSTOM_RELAY)
@@ -93,10 +109,9 @@ BoardInterface* BoardFactory::create() {
 
     #else
         // No board-specific implementation for this platform configuration
-        // This is valid for generic development boards:
-        // - Raspberry Pi Pico (no special peripherals beyond CAN transceiver)
-        // - Adafruit Feather M4 CAN (built-in CAN, handled by platform layer)
+        // This is valid for generic development boards without special peripherals:
         // - Generic ESP32 DevKit (just CAN transceiver)
+        // - Generic RP2040 board (just CAN transceiver)
         //
         // Platform action managers still provide GPIO/CAN/PWM functionality
         return nullptr;

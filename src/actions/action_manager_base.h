@@ -49,6 +49,18 @@ public:
     uint8_t update_periodic();
 
     /**
+     * Update board-specific periodic tasks (LED blinking, display updates, etc.)
+     * Default implementation does nothing - override in board implementations if needed
+     */
+    virtual void update_board_periodic();
+
+    /**
+     * Platform-specific system reset
+     * Each platform implements its own reset mechanism
+     */
+    void reset();
+
+    /**
      * Add a new action rule
      * @param rule The rule to add
      * @return Rule ID if successful, 0 on failure
@@ -195,6 +207,12 @@ protected:
      * Called during initialize() to populate custom command registry
      */
     virtual void register_custom_commands() = 0;
+
+    /**
+     * Platform-specific system reset
+     * Each platform implements its own reset mechanism
+     */
+    virtual void platform_reset() = 0;
 
     // Shared resources accessible to derived classes
     ActionRule rules_[MAX_ACTION_RULES];

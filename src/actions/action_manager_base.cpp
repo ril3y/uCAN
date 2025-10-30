@@ -118,6 +118,17 @@ uint8_t ActionManagerBase::update_periodic() {
     return executed;
 }
 
+void ActionManagerBase::update_board_periodic() {
+    // Default implementation does nothing
+    // Board-specific implementations can override this to handle
+    // periodic tasks like LED blinking, display updates, etc.
+}
+
+void ActionManagerBase::reset() {
+    // Call platform-specific reset implementation
+    platform_reset();
+}
+
 uint8_t ActionManagerBase::add_rule(const ActionRule& rule) {
     if (!initialized_) {
         return 0;

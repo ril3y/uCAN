@@ -36,6 +36,11 @@ private:
     bool sd_available_;
     bool display_initialized_;
 
+    // Periodic backlight pulse state
+    unsigned long last_pulse_;
+    uint8_t pulse_direction_;  // 0 = dimming, 1 = brightening
+    uint8_t current_brightness_;
+
     // Helper methods
     bool init_display();
     bool init_touch();
