@@ -2,6 +2,8 @@
 #include <ArduinoJson.h>
 #include <string.h>
 #include "board_capabilities.h"
+#include "../boards/board_config.h"  // For BoardFeature enum
+#include "../hal/platform_config.h"  // For get_board_config()
 #include "../actions/action_manager_base.h"
 
 #ifdef PLATFORM_ESP32
@@ -68,6 +70,8 @@ void send_capabilities_json() {
     JsonArray features = doc["features"].to<JsonArray>();
     features.add("action_system");  // Required by tests
     features.add("rules_engine");   // Required by tests
+
+    // Platform capabilities (chip-level)
     if (platform_capabilities.has_capability(CAP_GPIO_DIGITAL)) features.add("GPIO");
     if (platform_capabilities.has_capability(CAP_GPIO_PWM)) features.add("PWM");
     if (platform_capabilities.has_capability(CAP_GPIO_ANALOG)) features.add("ADC");
@@ -79,6 +83,14 @@ void send_capabilities_json() {
     if (platform_capabilities.has_capability(CAP_RTC)) features.add("RTC");
     if (platform_capabilities.has_capability(CAP_I2S)) features.add("I2S");
     if (platform_capabilities.has_capability(CAP_I2C)) features.add("I2C");
+
+    // Board features (product-specific peripherals)
+    if (get_board_config().has_feature(FEATURE_SD_CARD)) features.add("SD_CARD");
+    if (get_board_config().has_feature(FEATURE_WIFI)) features.add("WIFI");
+    if (get_board_config().has_feature(FEATURE_BLUETOOTH)) features.add("BLUETOOTH");
+    if (get_board_config().has_feature(FEATURE_RS485)) features.add("RS485");
+    if (get_board_config().has_feature(FEATURE_DISPLAY)) features.add("DISPLAY");
+    if (get_board_config().has_feature(FEATURE_TOUCHSCREEN)) features.add("TOUCHSCREEN");
 
     // Send formatted JSON response
     Serial.print("CAPS;");

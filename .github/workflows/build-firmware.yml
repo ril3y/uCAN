@@ -19,6 +19,8 @@ jobs:
         environment:
           - feather_m4_can
           - pico
+          - esp32_t_can485
+          - esp32_t_panel
 
     steps:
     - name: Checkout code
@@ -128,7 +130,7 @@ jobs:
         mkdir release-assets
 
         # Package each environment's firmware
-        for env in feather_m4_can pico; do
+        for env in feather_m4_can pico esp32_t_can485 esp32_t_panel; do
           if [ -d "firmware-builds/firmware-$env" ]; then
             cd firmware-builds/firmware-$env
 
@@ -175,22 +177,42 @@ jobs:
         3. Drag and drop UF2 file to FEATHERBOOT drive
         4. Board will auto-reset and run new firmware
 
-        **Default Configuration:**
-        - CAN bitrate: 500kbps (adjustable via web UI after installation)
-        - All features enabled (GPIO, PWM, NeoPixel, I2C, Actions)
-
         **For Raspberry Pi Pico:**
         1. Download `uCAN-pico-*.uf2`
         2. Hold BOOTSEL button while plugging in USB
         3. Drag and drop UF2 file to RPI-RP2 drive
         4. Connect MCP2551 CAN transceiver to GP4/GP5
 
-        ### Features
+        **For LilyGo T-CAN485 (ESP32):**
+        1. Download `uCAN-esp32_t_can485-*.bin`
+        2. Install esptool: `pip install esptool`
+        3. Flash firmware: `esptool.py --chip esp32 --port COM3 write_flash 0x10000 uCAN-esp32_t_can485-*.bin`
+        4. Features: CAN + RS485 + SD card + WS2812 RGB LED
+
+        **For LilyGo T-Panel (ESP32-S3):**
+        1. Download `uCAN-esp32_t_panel-*.bin`
+        2. Install esptool: `pip install esptool`
+        3. Flash firmware: `esptool.py --chip esp32s3 --port COM3 write_flash 0x10000 uCAN-esp32_t_panel-*.bin`
+        4. Features: 480x480 touchscreen + CAN + SD card
+
+        ### Default Configuration
+        - CAN bitrate: 500kbps (adjustable via web UI after installation)
+        - All board-specific features enabled
         - Protocol v2.0 compliant
+
+        ### Features by Board
+        | Board | CAN | RS485 | Display | SD Card | NeoPixel | WiFi/BT |
+        |-------|-----|-------|---------|---------|----------|---------|
+        | Feather M4 CAN | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+        | Pico | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+        | T-CAN485 | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+        | T-Panel | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+
+        ### Core Features (All Boards)
         - Rule-based action system
-        - GPIO, PWM, NeoPixel, I2C actions
+        - GPIO, PWM, ADC control
         - Web UI compatible
-        - 91 passing integration tests (79% pass rate)
+        - Capability auto-discovery
 
         ### Web Interface
         Use this firmware with the web UI at https://battlewithbytes.io/tools/ucan
@@ -198,6 +220,7 @@ jobs:
         ### Documentation
         - Protocol Specification: [docs/PROTOCOL.md](docs/PROTOCOL.md)
         - Full README: [README.md](README.md)
+        - Board Details: [CLAUDE.md](CLAUDE.md)
         EOF
 
         echo "Release notes generated"

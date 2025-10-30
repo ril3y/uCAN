@@ -87,6 +87,29 @@ void add_platform_hardware_info(JsonObject& hardware) {
         sd["sclk_pin"] = get_board_config().pins.sd_sclk_pin;
     }
 
+    // RS485 interface (if available)
+    if (get_board_config().has_feature(FEATURE_RS485)) {
+        JsonObject rs485 = hardware["rs485"].to<JsonObject>();
+        rs485["tx_pin"] = get_board_config().pins.rs485_tx_pin;
+        rs485["rx_pin"] = get_board_config().pins.rs485_rx_pin;
+        rs485["enable_pin"] = get_board_config().pins.rs485_enable_pin;
+    }
+
+    // Display (if available)
+    if (get_board_config().has_feature(FEATURE_DISPLAY)) {
+        JsonObject display = hardware["display"].to<JsonObject>();
+        display["backlight_pin"] = get_board_config().pins.status_led_pin;  // LCD backlight
+        display["resolution"] = "480x480";  // T-Panel specific
+        display["driver"] = "ST7701S";      // T-Panel specific
+    }
+
+    // Touchscreen (if available)
+    if (get_board_config().has_feature(FEATURE_TOUCHSCREEN)) {
+        JsonObject touch = hardware["touchscreen"].to<JsonObject>();
+        touch["controller"] = "CST3240";  // T-Panel specific
+        touch["interface"] = "I2C";
+    }
+
     // Connectivity
     JsonObject connectivity = hardware["connectivity"].to<JsonObject>();
     connectivity["wifi"] = get_board_config().has_feature(FEATURE_WIFI);
