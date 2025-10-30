@@ -199,9 +199,9 @@ No critical issues were found. All memory allocations are intentional, bounded, 
 
 ---
 
-## Appendix: Running the Analysis
+## Appendix A: Running the Analysis Locally
 
-To reproduce this analysis:
+To reproduce this analysis locally:
 
 ```bash
 # Build all platforms with map files
@@ -210,15 +210,107 @@ pio run -e feather_m4_can -e pico -e esp32_t_can485 -e esp32_t_panel
 # Run the firmware analyzer
 python python/analyze_firmware.py
 
-# Output includes:
-# - Modularity check (board pollution detection)
-# - Large symbol identification (>1KB)
-# - Global variable analysis (>256 bytes)
-# - Source code modularity verification
+# Check exit code
+echo $?  # 0 = pass, 1 = fail
 ```
+
+**Output includes**:
+- Modularity check (board pollution detection)
+- Large symbol identification (>1KB)
+- Global variable analysis (>256 bytes)
+- Source code modularity verification
+- Final PASS/FAIL status with violation counts
 
 The analyzer automatically:
 - Validates each platform links only its own board implementation
 - Identifies large memory allocations
 - Checks for platform-specific code leakage into generic modules
 - Provides a summary report of all findings
+- **Returns exit code 1 if violations are detected** (for CI/CD integration)
+
+## Appendix B: CI/CD Integration
+
+### Automated Analysis on Every Build
+
+The firmware analysis is **automatically run** by GitHub Actions on:
+- Every push to `main` or `feature/*` branches
+- Every pull request to `main`
+- Every release creation
+
+### Workflow Behavior
+
+**GitHub Actions Job**: `analyze`
+- Runs after the `build` job completes
+- Rebuilds all 4 platforms to generate fresh linker maps
+- Executes `python/analyze_firmware.py`
+- **FAILS the build** if violations are detected
+- Uploads analysis report as downloadable artifact (90 days)
+- Uploads linker maps as artifacts (30 days)
+
+**Failure Conditions**:
+- ❌ Cross-platform code contamination detected
+- ❌ Board implementation pollution (wrong board linked)
+- ❌ Platform-specific code in generic modules
+
+**Dependencies**:
+- `create-release` job requires `analyze` to pass
+- `build-status` job checks `analyze` results
+- Releases cannot be created if analysis fails
+
+### Viewing Analysis Reports
+
+**In GitHub Actions**:
+1. Go to the "Actions" tab in GitHub
+2. Click on any workflow run
+3. Scroll to "Artifacts" section
+4. Download `firmware-analysis-report` (text file)
+5. Download `linker-maps` (for detailed investigation)
+
+**Artifact Retention**:
+- Analysis reports: 90 days
+- Linker maps: 30 days
+
+### Local vs CI Analysis
+
+| Aspect | Local | CI/CD |
+|--------|-------|-------|
+| Trigger | Manual (`python python/analyze_firmware.py`) | Automatic (on push/PR) |
+| Builds | Uses existing `.pio/build/` | Fresh rebuild |
+| Failure | Returns exit code 1 | Fails GitHub Actions job |
+| Report | Stdout | Artifact download |
+| Purpose | Development/debugging | Quality gate |
+
+### Modifying Analysis Thresholds
+
+To adjust failure conditions, edit `python/analyze_firmware.py`:
+
+```python
+# In generate_report() method:
+violations["modularity_errors"] = total_pollution  # Change threshold here
+violations["passed"] = total_pollution == 0        # Modify pass condition
+```
+
+**Example - Allow up to 5 warnings**:
+```python
+violations["passed"] = total_pollution <= 5
+```
+
+**Example - Make memory warnings fatal**:
+```python
+if large_globals > 10:
+    violations["memory_warnings"] += 1
+    violations["passed"] = False
+```
+
+### Bypassing Analysis (Not Recommended)
+
+To temporarily disable analysis checking:
+
+```yaml
+# .github/workflows/build-firmware.yml
+- name: Run firmware analysis
+  run: |
+    python python/analyze_firmware.py || true  # Always pass
+```
+
+⚠️ **Warning**: This defeats the purpose of quality gates. Only use during development if analysis is incorrectly failing.
