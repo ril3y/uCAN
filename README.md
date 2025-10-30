@@ -48,7 +48,8 @@ The uCAN Web UI provides a modern, browser-based interface for monitoring and co
 - **Hardware Abstraction Layer (HAL)** - Write once, run on any platform
 - **RP2040 Support** - Raspberry Pi Pico with external MCP2551 CAN transceiver
 - **SAMD51 Support** - Adafruit Feather M4 CAN with integrated CAN peripheral
-- **ESP32/STM32 Ready** - HAL prepared for future platform additions
+- **ESP32 Support** - LilyGo T-CAN485 (CAN+RS485+SD) and T-Panel (touchscreen+CAN)
+- **STM32 Ready** - HAL prepared for future platform additions
 - **Unified Protocol v2.0** - Text-based serial protocol (115200 baud default)
 - **Dynamic Capability Discovery** - Runtime query of board features and actions
 - **Rule-Based Action System** - Hardware responses to CAN messages without host intervention
@@ -67,7 +68,8 @@ The uCAN Web UI provides a modern, browser-based interface for monitoring and co
 |-------|-----|----------------|--------|-------|
 | **Raspberry Pi Pico + MCP2551** | RP2040 | External SPI | ✅ Tested | Software CAN via PIO |
 | **Adafruit Feather M4 CAN** | SAMD51 | Built-in MCAN | ✅ Tested | Integrated transceiver + NeoPixel |
-| **ESP32 + SN65HVD230** | ESP32 | External | 🚧 HAL Ready | Implementation needed |
+| **LilyGo T-CAN485** | ESP32 | Built-in TWAI | ✅ Tested | CAN + RS485 + SD card + WS2812 LED |
+| **LilyGo T-Panel** | ESP32-S3 | Built-in TWAI | ✅ Tested | 480x480 touchscreen + CAN + SD card |
 | **STM32F4 Nucleo** | STM32F4 | Built-in bxCAN | 🚧 HAL Ready | Implementation needed |
 
 ### 2. Install Firmware
@@ -155,6 +157,61 @@ Pico GP5 (CAN RX) → MCP2551 RXD
 Pico 3.3V → MCP2551 VCC
 Pico GND → MCP2551 GND
 MCP2551 CANH/CANL → CAN Bus (with 120Ω termination)
+```
+
+#### **For LilyGo T-CAN485** (ESP32)
+
+```bash
+# Build firmware
+pio run -e esp32_t_can485
+
+# Flash via USB (auto-detects port)
+pio run -e esp32_t_can485 --target upload
+
+# Monitor serial output
+pio device monitor -b 115200
+```
+
+**Hardware Features:**
+- Built-in TWAI (CAN) controller with transceiver
+- RS485 transceiver with automatic direction control
+- SD card slot for logging
+- WS2812 RGB LED for status indication
+- All CAN peripherals pre-wired (just connect CANH/CANL)
+
+**Hardware Connections:**
+```
+T-CAN485 CANH/CANL → CAN Bus (with 120Ω termination)
+RS485 A/B → Optional RS485 network
+Power via USB-C (5V)
+```
+
+#### **For LilyGo T-Panel** (ESP32-S3)
+
+```bash
+# Build firmware
+pio run -e esp32_t_panel
+
+# Flash via USB (auto-detects port)
+pio run -e esp32_t_panel --target upload
+
+# Monitor serial output
+pio device monitor -b 115200
+```
+
+**Hardware Features:**
+- Built-in TWAI (CAN) controller (requires external transceiver)
+- 480x480 pixel touchscreen display (ST7701S)
+- SD card slot for logging and data storage
+- LCD backlight control with PWM
+- CST3240 capacitive touch controller
+
+**Hardware Connections:**
+```
+External CAN transceiver required:
+  ESP32-S3 TX/RX pins → CAN transceiver
+  Transceiver CANH/CANL → CAN Bus (with 120Ω termination)
+Power via USB-C (5V)
 ```
 
 ### 3. Use the Web Interface
@@ -262,106 +319,162 @@ action:disable:1
 
 ## 🛠️ Adding Support for New Boards
 
-uCAN's Hardware Abstraction Layer makes it easy to add new platforms. Follow these steps:
+uCAN's three-layer architecture makes it easy to add new boards. The process depends on whether you're adding a new chip family or a new board based on an existing chip.
 
-### 1. Platform Detection
+### Option A: Adding a New Board (Existing Chip)
 
-Add your platform to `src/hal/platform_config.h`:
+If you're adding a board that uses an already-supported chip (RP2040, SAMD51, ESP32), you only need to implement the board-specific layer.
 
-```cpp
-#elif defined(ARDUINO_ARCH_ESP32)
-    #define PLATFORM_ESP32
-    #define PLATFORM_NAME "ESP32"
-```
+**Example: Adding a custom ESP32 board with unique peripherals**
 
-### 2. Capability Definition
+1. **Create board folder** `src/boards/my_custom_board/`
 
-Create `src/capabilities/esp32_capabilities.cpp`:
+2. **Define board configuration** `src/boards/my_custom_board/board_config.h`:
+   ```cpp
+   #pragma once
+   #include "../board_registry.h"
 
-```cpp
-#include "board_capabilities.h"
+   inline const BoardConfig& get_board_config() {
+       static const BoardConfig config = {
+           .board_name = "My Custom Board",
+           .pins = {
+               .can_tx = 21,
+               .can_rx = 22,
+               .status_led_pin = 2,
+               .custom_pin_1 = 13  // Your custom peripheral
+           },
+           // ... additional config
+       };
+       return config;
+   }
+   ```
 
-#ifdef PLATFORM_ESP32
+3. **Implement BoardInterface** `src/boards/my_custom_board/board_impl.cpp`:
+   ```cpp
+   #include "board_impl.h"
 
-PlatformCapabilities platform_capabilities = {
-    .board_name = "ESP32 DevKit",
-    .chip_name = "ESP32",
-    .flash_size = 4*1024*1024,  // 4MB
-    .ram_size = 520*1024,        // 520KB
-    .gpio_count = 34,
-    .pwm_channels = 16,
-    // ... etc
-};
+   bool MyCustomBoard::initialize(ActionManagerBase* action_manager) {
+       // Initialize your board-specific peripherals
+       // (displays, sensors, SD cards, etc.)
+       return true;
+   }
 
-#endif
-```
+   void MyCustomBoard::update_periodic() {
+       // Board-specific periodic tasks (LED blinking, display updates)
+   }
 
-### 3. HAL Implementation
+   void MyCustomBoard::register_custom_commands(CustomCommandRegistry& registry) {
+       // Register custom commands specific to your board
+   }
+   ```
 
-Create `src/hal/esp32_can.cpp`:
+4. **Update board factory** `src/boards/board_factory.cpp`:
+   ```cpp
+   #ifdef MY_CUSTOM_BOARD
+       return new MyCustomBoard();
+   #endif
+   ```
 
-```cpp
-#include "can_interface.h"
+5. **Add PlatformIO environment** in `platformio.ini`:
+   ```ini
+   [env:my_custom_board]
+   extends = env:esp32  # Inherit from platform
+   build_flags =
+       ${env:esp32.build_flags}
+       -D MY_CUSTOM_BOARD
+   build_src_filter =
+       ${env:esp32.build_src_filter}
+       -<boards/t_can485/>  # Exclude other boards
+       -<boards/t_panel/>
+   ```
 
-#ifdef PLATFORM_ESP32
+6. **Build and test**:
+   ```bash
+   pio run -e my_custom_board --target upload
+   ```
 
-class ESP32CAN : public CANInterface {
-public:
-    bool initialize(const CANConfig& config) override {
-        // Initialize ESP32 CAN peripheral
-        return true;
-    }
+**That's it!** Your board inherits all platform capabilities (GPIO, PWM, CAN) and adds its unique features.
 
-    bool send_message(const CANMessage& message) override {
-        // Transmit CAN message
-        return true;
-    }
+---
 
-    bool receive_message(CANMessage& message) override {
-        // Receive CAN message
-        return true;
-    }
+### Option B: Adding a New Platform (New Chip)
 
-    // Implement other virtual methods...
-};
+If you're adding a completely new chip family (e.g., STM32), you need to implement both platform and board layers.
 
-#endif
-```
+1. **Platform Detection** - Add to `src/hal/platform_config.h`:
+   ```cpp
+   #elif defined(ARDUINO_ARCH_STM32)
+       #define PLATFORM_STM32
+       #define PLATFORM_NAME "STM32"
+   ```
 
-### 4. Factory Registration
+2. **Platform Capabilities** - Create `src/capabilities/stm32/stm32_action_manager.cpp`:
+   ```cpp
+   class STM32ActionManager : public ActionManagerBase {
+   public:
+       bool initialize() override {
+           // Initialize STM32 GPIO, PWM, CAN peripherals
+           return true;
+       }
 
-Add to `src/hal/can_factory.h`:
+       void platform_reset() override {
+           NVIC_SystemReset();
+       }
 
-```cpp
-#ifdef PLATFORM_ESP32
-    return new ESP32CAN();
-#endif
-```
+       // Implement platform-specific actions...
+   };
+   ```
 
-### 5. PlatformIO Environment
+3. **CAN HAL** - Create `src/hal/stm32_can.cpp`:
+   ```cpp
+   class STM32CAN : public CANInterface {
+       bool initialize(const CANConfig& config) override;
+       bool send_message(const CANMessage& msg) override;
+       bool receive_message(CANMessage& msg) override;
+   };
+   ```
 
-Add to `platformio.ini`:
+4. **Board Implementation** - Create `src/boards/my_stm32_board/board_impl.cpp` (same as Option A)
 
-```ini
-[env:esp32]
-platform = espressif32
-board = esp32dev
-framework = arduino
-build_flags =
-    -DPLATFORM_ESP32
-    -DDEFAULT_CAN_BITRATE=500000
-lib_deps =
-    ESP32-CAN  # Your CAN library
-```
+5. **Factory Registration** - Update `src/hal/can_factory.h`:
+   ```cpp
+   #ifdef PLATFORM_STM32
+       return new STM32CAN();
+   #endif
+   ```
 
-### 6. Build & Test
+6. **PlatformIO Environment**:
+   ```ini
+   [env:my_stm32_board]
+   platform = ststm32
+   board = nucleo_f446re
+   framework = arduino
+   build_flags =
+       ${env.build_flags}
+       -D PLATFORM_STM32
+       -D MY_STM32_BOARD
+   lib_deps =
+       ${env.lib_deps}
+       stm32duino/STM32duino CAN @ ^1.2.0
+   ```
+
+---
+
+### Self-Contained Builds
+
+All dependencies are managed by PlatformIO. After `git clone`, users just run:
 
 ```bash
-pio run -e esp32
-pio run -e esp32 --target upload
+git clone <repo>
+cd uCAN
+pio run -e <board>  # PlatformIO auto-downloads everything!
 ```
 
-**That's it!** Your new board is now fully integrated with uCAN's protocol, action system, and web UI.
+No manual library installation needed! All dependencies are specified in `platformio.ini` with exact versions:
+- `ArduinoJson @ ^7.0.0`
+- `Adafruit CAN Fork @ ^1.2.1`
+- `Adafruit NeoPixel @ ^1.11.0`
+- Platform-specific toolchains (auto-installed)
 
 ---
 
@@ -375,19 +488,31 @@ uCAN/
 │   │   ├── can_factory.h          # Platform-specific factory
 │   │   ├── rp2040_can.cpp/.h      # RP2040 implementation
 │   │   ├── samd51_can.cpp/.h      # SAMD51 implementation
+│   │   ├── esp32_can.cpp/.h       # ESP32 TWAI implementation
 │   │   └── platform_config.h      # Platform detection
-│   ├── capabilities/              # Platform capability system
-│   │   ├── board_capabilities.h   # Capability definitions
-│   │   ├── capability_query.cpp   # JSON capability responses
-│   │   ├── rp2040_capabilities.cpp
-│   │   └── samd51_capabilities.cpp
+│   │
+│   ├── capabilities/              # Platform-level capabilities (chip APIs)
+│   │   ├── rp2040/                # RP2040 GPIO/PWM/CAN APIs
+│   │   ├── samd51/                # SAMD51 GPIO/PWM/CAN APIs
+│   │   └── esp32/                 # ESP32 GPIO/PWM/TWAI/DAC APIs
+│   │
+│   ├── boards/                    # Board-specific implementations
+│   │   ├── rpi_pico/              # Raspberry Pi Pico (LED control)
+│   │   ├── feather_m4_can/        # Feather M4 CAN (NeoPixel)
+│   │   ├── t_can485/              # T-CAN485 (RS485, SD, WS2812)
+│   │   ├── t_panel/               # T-Panel (display, touch, SD)
+│   │   ├── board_interface.h      # Abstract board interface
+│   │   ├── board_factory.cpp      # Board instantiation factory
+│   │   └── board_registry.h       # Board configuration registry
+│   │
 │   ├── actions/                   # Rule-based action system
 │   │   ├── action_types.h         # Action type definitions
 │   │   ├── action_manager_base.h/.cpp  # Base action manager
 │   │   ├── action_manager.h/.cpp  # Platform-specific managers
 │   │   ├── param_mapping.h/.cpp   # CAN data parameter extraction
 │   │   └── custom_command.h/.cpp  # Custom user commands
-│   └── main.cpp                   # Main firmware entry point
+│   │
+│   └── main.cpp                   # Hardware-agnostic main entry point
 │
 ├── tests/                         # Integration test suite
 │   ├── conftest.py                # Pytest fixtures
@@ -406,6 +531,23 @@ uCAN/
 ├── pyproject.toml                 # Python test package configuration
 └── README.md                      # This file
 ```
+
+### Architecture Overview
+
+uCAN uses a three-layer architecture for maximum code reuse and modularity:
+
+1. **Platform Layer** (`src/capabilities/<chip>/`) - Chip-level APIs shared by all boards using the same MCU
+   - GPIO, PWM, ADC, CAN/TWAI controller access
+   - Platform-specific implementations (ESP32ActionManager, RP2040ActionManager, SAMD51ActionManager)
+
+2. **Board Layer** (`src/boards/<product>/`) - Product-specific peripherals and features
+   - Each physical board product gets its own folder
+   - Handles unique peripherals (RS485, displays, SD cards, power management)
+   - Examples: T-CAN485 has RS485+SD, T-Panel has touchscreen+display
+
+3. **Application Layer** (`src/main.cpp`) - Hardware-agnostic application logic
+   - Protocol handling, action system, rule engine
+   - Zero platform/board-specific code via abstraction layers
 
 ---
 
