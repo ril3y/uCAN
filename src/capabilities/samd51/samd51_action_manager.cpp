@@ -9,7 +9,7 @@
 
 // Include board implementation for NeoPixel delegation (if Feather M4 CAN)
 #ifdef ARDUINO_ADAFRUIT_FEATHER_M4_CAN
-#include "../../boards/samd51/board_impl.h"
+#include "../../boards/feather_m4_can/board_impl.h"
 #endif
 
 // ============================================================================

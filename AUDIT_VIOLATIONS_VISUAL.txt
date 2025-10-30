@@ -1,0 +1,320 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║         src/main.cpp AUDIT - VISUAL VIOLATION MAP                          ║
+║                                                                            ║
+║         4 Board-Specific Violations Found                                  ║
+║         Status: CRITICAL - Action Required                                ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+
+FILE: src/main.cpp (759 lines total)
+═════════════════════════════════════════════════════════════════════════════
+
+Line 1-55: ✅ CLEAN
+  ├─ Includes
+  ├─ Global declarations
+  └─ Prototypes
+        │
+        ├─ ✅ can_interface: abstract interface (correct)
+        ├─ ✅ action_manager: abstract interface (correct)
+        └─ ❌ board_interface: MISSING! (should be declared)
+
+
+Line 53-139: setup() FUNCTION
+═════════════════════════════════════════════════════════════════════════════
+
+  53 │ void setup() {
+  54 │   Serial.begin(DEFAULT_SERIAL_BAUD);
+      │     ✅ CLEAN: Serial init is hardware-independent
+      │
+  56 │   // Setup status LED if available
+  57 │   #ifdef STATUS_LED_PIN          <- ❌ VIOLATION #1
+  58 │     if (STATUS_LED_PIN != 0) {
+  59 │       pinMode(STATUS_LED_PIN, OUTPUT);  <- GPIO setup (should be in board!)
+  60 │     }
+  61 │   #elif defined(LED_BUILTIN)      <- ❌ Platform conditional
+  62 │     pinMode(LED_BUILTIN, OUTPUT);
+  63 │   #endif
+      │
+      │   PROBLEM: LED setup is board-specific code
+      │   - Different boards have different LED types
+      │   - Should be in BoardInterface::initialize()
+      │   - main.cpp shouldn't know about GPIO
+      │   - Prevents generic board abstraction
+      │
+  65 │   // Wait for serial port...
+  66 │   unsigned long start_time = millis();
+  67 │   while (!Serial && (millis() - start_time) < 3000) {
+      │     ✅ CLEAN: Serial wait
+      │
+  72 │   can_interface = CANFactory::create();
+      │     ✅ CORRECT: Uses factory pattern
+      │
+  81 │   if (can_interface->initialize(config)) {
+      │     ✅ CORRECT: Delegates to CAN interface
+      │
+  93 │   action_manager = ActionManagerFactory::create();
+      │     ✅ CORRECT: Uses factory pattern
+      │
+ 100 │   if (action_manager->initialize(can_interface)) {
+      │     ✅ CORRECT: Delegates to action manager
+      │
+ 106 │ #ifdef HAS_DEFAULT_CONFIG
+      │     ✅ OKAY: Build flag, not board-specific
+      │
+ 123 │   #ifdef PLATFORM_SAMD51          <- ❌ VIOLATION #4
+ 124 │     loaded = load_samd51_default_rules(action_manager);
+      │
+      │   PROBLEM: Only SAMD51 supported
+      │   - RP2040 and ESP32 missing support
+      │   - Not extensible
+      │   - Should use ActionManagerFactory::load_platform_default_rules()
+      │
+ 139 │ } // end setup()
+
+
+Line 141-186: loop() FUNCTION
+═════════════════════════════════════════════════════════════════════════════
+
+ 141 │ void loop() {
+      │
+ 142 │   // Blink LED to show we're alive
+ 143 │   static unsigned long last_blink = 0;
+ 144 │   if (millis() - last_blink > 1000) {
+ 145 │     #ifdef STATUS_LED_PIN          <- ❌ VIOLATION #2 (CRITICAL!)
+ 146 │       if (STATUS_LED_PIN != 0) {
+ 147 │         digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+ 148 │       }
+ 149 │     #elif defined(LED_BUILTIN)
+ 150 │       digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+ 151 │     #endif
+ 152 │     last_blink = millis();
+ 153 │   }
+      │
+      │   ⚠️  CRITICAL VIOLATION:
+      │   - Direct GPIO in main loop (worst place!)
+      │   - Platform conditionals (#ifdef) in hot path
+      │   - Called every iteration
+      │   - Cannot test without hardware
+      │   - Cannot unit test LED behavior
+      │   - Different LED types (RGB, single, display) hardcoded
+      │   - Adding new boards = modify main.cpp
+      │   - T-CAN485 NeoPixel control completely broken here!
+      │
+ 156 │   process_can_messages();
+      │     ✅ CORRECT: Delegates to function
+      │
+ 159 │   process_serial_input();
+      │     ✅ CORRECT: Delegates to function
+      │
+ 162 │   if (action_manager) {
+ 163 │     action_manager->update_periodic();
+      │     ✅ CORRECT: Delegates to action manager
+      │     ❌ MISSING: Should also call board_interface->update_periodic()!
+      │
+ 167 │   if (millis() - last_stats_time >= STATS_INTERVAL) {
+      │     ✅ CORRECT: Stats reporting
+      │
+ 173 │ #ifdef ENABLE_HEARTBEAT
+      │     ✅ OKAY: Build flag
+      │
+ 181 │   CANError error = can_interface->get_error_status();
+      │     ✅ CORRECT: Error handling via interface
+      │
+ 186 │ } // end loop()
+
+
+Line 501-550: handle_control_command()
+═════════════════════════════════════════════════════════════════════════════
+
+ 501 │ void handle_control_command(const char* action) {
+ 502 │   if (strcmp(action, "reset") == 0) {
+ 503 │     send_status("INFO", "Resetting device");
+ 504 │     delay(100);
+ 505 │     // Platform-specific reset
+ 506 │     #ifdef PLATFORM_RP2040          <- ❌ VIOLATION #3
+ 507 │       watchdog_reboot(0, 0, 0);
+ 508 │     #elif defined(PLATFORM_ESP32)
+ 509 │       ESP.restart();
+ 510 │     #else
+ 511 │       NVIC_SystemReset();  // ARM Cortex-M
+ 512 │     #endif
+      │
+      │   PROBLEM: Platform implementation in command handler
+      │   - main.cpp knows how to reset for 3 platforms
+      │   - Adding STM32 = modify main.cpp
+      │   - Should be in ActionManagerBase::reset()
+      │   - Cannot test without hardware
+
+
+═════════════════════════════════════════════════════════════════════════════
+VIOLATION SUMMARY TABLE
+═════════════════════════════════════════════════════════════════════════════
+
+Violation │ Lines   │ Severity │ Type                    │ Should Be
+───────────┼─────────┼──────────┼─────────────────────────┼──────────────────
+    #1     │ 56-63   │ MEDIUM   │ LED setup GPIO code     │ BoardInterface
+    #2     │ 142-153 │ CRITICAL │ LED blink in hot loop   │ BoardInterface
+    #3     │ 506-512 │ HIGH     │ Platform-specific reset │ ActionManager
+    #4     │ 123-132 │ MEDIUM   │ Non-extensible rules    │ Factory pattern
+
+
+═════════════════════════════════════════════════════════════════════════════
+IMPACT ASSESSMENT
+═════════════════════════════════════════════════════════════════════════════
+
+CRITICAL ISSUES (Violation #2):
+  ❌ Direct GPIO manipulation in main loop (every iteration!)
+  ❌ Platform conditionals (#ifdef) in performance-critical path
+  ❌ Cannot unit test LED behavior
+  ❌ Different LED types cannot coexist
+  ❌ T-CAN485 NeoPixel control is broken in current design
+  ❌ Adding new boards requires modifying main.cpp
+  ❌ Violates abstraction layer design
+
+ARCHITECTURAL DEBT (Violation #1, #3, #4):
+  ❌ main.cpp contains platform implementation details
+  ❌ Cannot add new platforms without modifying main.cpp
+  ❌ Violates Single Responsibility Principle
+  ❌ Cannot be tested without hardware
+  ❌ Not extensible
+
+SEVERITY DISTRIBUTION:
+  ┌─────────────────────────────────┐
+  │ CRITICAL:  1 violation (25%)   │  <- Line 142-153
+  │ HIGH:      1 violation (25%)   │  <- Line 506-512
+  │ MEDIUM:    2 violations (50%)  │  <- Lines 56-63, 123-132
+  └─────────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════
+ABSTRACTION PRINCIPLE VIOLATIONS
+═════════════════════════════════════════════════════════════════════════════
+
+SRP (Single Responsibility Principle) VIOLATED:
+  ❌ setup() responsible for serial, CAN, action manager, AND GPIO
+  ❌ loop() responsible for processing, serial, AND GPIO blinking
+  ❌ handle_control_command() responsible for routing AND platform reset
+
+DIP (Dependency Inversion Principle) VIOLATED:
+  ❌ main.cpp depends on concrete GPIO API (digitalWrite, etc.)
+  ❌ main.cpp depends on concrete platform APIs (watchdog, ESP.restart)
+  ❌ Should depend on abstract interfaces (BoardInterface, ActionManager)
+
+OCP (Open/Closed Principle) VIOLATED:
+  ❌ Adding new boards requires MODIFYING main.cpp
+  ❌ Adding new platforms requires MODIFYING main.cpp
+  ❌ Should be EXTENSIBLE without modification
+
+DRY (Don't Repeat Yourself) VIOLATED:
+  ❌ LED setup code can't be reused across boards
+  ❌ Platform-specific reset code duplicated
+  ❌ Default rule loading logic the same for each platform
+
+
+═════════════════════════════════════════════════════════════════════════════
+VIOLATION BREAKDOWN
+═════════════════════════════════════════════════════════════════════════════
+
+VIOLATION #1: LED Setup in setup() (Lines 56-63) - MEDIUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Type: GPIO code in setup function
+  Severity: MEDIUM
+  Impact:
+    • Cannot test LED setup without hardware
+    • Adding new board types requires modifying main.cpp
+    • Different LED types (GPIO, NeoPixel, display) hardcoded
+  Fix: Move to BoardInterface::initialize()
+
+
+VIOLATION #2: LED Blinking in loop() (Lines 142-153) - CRITICAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Type: Direct GPIO in hot main loop
+  Severity: CRITICAL (Most dangerous)
+  Impact:
+    • Platform conditionals (#ifdef) in every iteration
+    • Worst possible location for board-specific code
+    • Cannot be unit tested
+    • Different LED types completely broken
+    • T-CAN485 NeoPixel not working
+    • Adding boards = modify main.cpp
+  Fix: Move to BoardInterface::update_periodic()
+  THIS IS THE MOST CRITICAL VIOLATION
+
+
+VIOLATION #3: Platform Reset (Lines 506-512) - HIGH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Type: Platform implementation in command handler
+  Severity: HIGH
+  Impact:
+    • main.cpp must know about all platforms
+    • Adding STM32 = modify main.cpp
+    • Cannot test without hardware
+    • Violates abstraction layer
+  Fix: Delegate to ActionManagerBase::reset()
+
+
+VIOLATION #4: Default Rules (Lines 123-132) - MEDIUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Type: Non-extensible platform handling
+  Severity: MEDIUM
+  Impact:
+    • Only SAMD51 supported (missing RP2040, ESP32)
+    • Not extensible - modify main.cpp for each platform
+    • Logic duplication
+  Fix: Use ActionManagerFactory::load_platform_default_rules()
+
+
+═════════════════════════════════════════════════════════════════════════════
+WHAT SHOULD HAPPEN
+═════════════════════════════════════════════════════════════════════════════
+
+CURRENT (BROKEN):
+  main.cpp
+    ├─ Creates CAN interface     ✅
+    ├─ Creates action manager    ✅
+    ├─ Blinks LED itself         ❌ (should delegate)
+    ├─ Handles reset directly    ❌ (should delegate)
+    └─ Loads platform rules      ❌ (should delegate)
+
+CORRECT (SHOULD BE):
+  main.cpp
+    ├─ Creates CAN interface     ✅ (via factory)
+    ├─ Creates action manager    ✅ (via factory)
+    ├─ Creates board interface   ✅ (via factory)
+    └─ Calls board->update_periodic()  ✅ (delegates LED)
+       Calls action_manager->reset()   ✅ (delegates reset)
+       Uses factory for rules          ✅ (delegates rules)
+
+
+═════════════════════════════════════════════════════════════════════════════
+QUICK REFERENCE: WHAT TO FIX
+═════════════════════════════════════════════════════════════════════════════
+
+1. DELETE from main.cpp:
+   Line 56-63:    LED setup code
+   Line 142-153:  LED blinking code
+   Line 506-512:  Platform reset code
+   Line 123-132:  Platform-specific rules
+
+2. ADD to board implementations:
+   - LED initialization in initialize()
+   - LED blinking in update_periodic()
+
+3. ADD to action managers:
+   - reset() virtual method
+   - reset() implementation for each platform
+
+4. ADD to factory:
+   - load_platform_default_rules() method
+
+
+═════════════════════════════════════════════════════════════════════════════
+For detailed information, see:
+
+  • AUDIT_README.md              - Start here (document index)
+  • AUDIT_SUMMARY.txt            - Executive summary
+  • AUDIT_CODE_VIOLATIONS.txt    - Line-by-line analysis
+  • AUDIT_MAIN_CPP.md            - Comprehensive audit with fixes
+  • AUDIT_REFACTORING_EXAMPLES.md - Complete code examples
+
+═════════════════════════════════════════════════════════════════════════════

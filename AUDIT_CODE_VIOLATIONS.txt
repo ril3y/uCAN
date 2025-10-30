@@ -1,0 +1,375 @@
+================================================================================
+CODE VIOLATIONS: Line-by-Line Analysis
+================================================================================
+Source: src/main.cpp
+
+================================================================================
+VIOLATION #1: LED SETUP (Lines 56-63)
+================================================================================
+Severity: MEDIUM
+Category: Platform-Specific Code in Main
+Location: setup() function
+
+Current Code:
+─────────────────────────────────────────────────────────────────────────────
+    56 |  // Setup status LED if available
+    57 |  #ifdef STATUS_LED_PIN
+    58 |    if (STATUS_LED_PIN != 0) {
+    59 |      pinMode(STATUS_LED_PIN, OUTPUT);
+    60 |    }
+    61 |  #elif defined(LED_BUILTIN)
+    62 |    pinMode(LED_BUILTIN, OUTPUT);
+    63 |  #endif
+─────────────────────────────────────────────────────────────────────────────
+
+Problems:
+  • Lines 57-63: Platform conditionals (#ifdef) in main.cpp
+  • Lines 59, 62: Direct GPIO initialization (pinMode)
+  • main.cpp knows about STATUS_LED_PIN and LED_BUILTIN macros
+  • Should be delegated to BoardInterface
+
+Correct Pattern:
+─────────────────────────────────────────────────────────────────────────────
+In setup():
+    // No LED setup here!
+    board_interface = BoardFactory::create();
+    if (board_interface) {
+        board_interface->initialize(action_manager);
+    }
+
+In src/boards/t_can485/board_impl.cpp:
+    bool TCAN485Board::initialize(ActionManagerBase* action_manager) {
+        // Initialize NeoPixel
+        neopixel_ = new Adafruit_NeoPixel(...);
+        neopixel_->begin();
+        set_neopixel_status(0, 255, 0);  // Green: ready
+        return true;
+    }
+─────────────────────────────────────────────────────────────────────────────
+
+Impact:
+  ❌ Cannot test without hardware
+  ❌ Cannot add new boards without modifying main.cpp
+  ❌ Different boards (NeoPixel, GPIO, display) all hardcoded here
+  ❌ Violates Single Responsibility
+
+
+================================================================================
+VIOLATION #2: LED BLINKING (Lines 142-153)
+================================================================================
+Severity: CRITICAL
+Category: Board-Specific Code in Main Loop
+Location: loop() function
+
+Current Code:
+─────────────────────────────────────────────────────────────────────────────
+   142 |  // Blink LED to show we're alive
+   143 |  static unsigned long last_blink = 0;
+   144 |  if (millis() - last_blink > 1000) {
+   145 |    #ifdef STATUS_LED_PIN
+   146 |      if (STATUS_LED_PIN != 0) {
+   147 |        digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+   148 |      }
+   149 |    #elif defined(LED_BUILTIN)
+   150 |      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+   151 |    #endif
+   152 |    last_blink = millis();
+   153 |  }
+─────────────────────────────────────────────────────────────────────────────
+
+Problems:
+  • Lines 145-151: Platform conditionals in every loop iteration
+  • Lines 147, 150: Direct GPIO toggle (digitalWrite/digitalRead)
+  • Line 144: Hardcoded 1000ms blink interval
+  • Most critical code in main loop should be doing PROTOCOL work, not GPIO
+  • This code runs EVERY iteration - inefficient with #ifdefs
+
+Correct Pattern:
+─────────────────────────────────────────────────────────────────────────────
+In loop():
+    if (action_manager) {
+        action_manager->update_periodic();
+    }
+
+    if (board_interface) {  // ADD THIS
+        board_interface->update_periodic();  // ALL LED logic here
+    }
+
+In src/boards/t_can485/board_impl.cpp:
+    void TCAN485Board::update_periodic() {
+        static unsigned long last_blink = 0;
+        if (millis() - last_blink > 1000) {
+            // NeoPixel status update
+            uint32_t status_color = get_device_status_color();
+            neopixel_->setPixelColor(0, status_color);
+            neopixel_->show();
+            last_blink = millis();
+        }
+    }
+
+In src/boards/default/board_impl.cpp:
+    void DefaultBoard::update_periodic() {
+        // Generic boards: simple GPIO blink
+        static unsigned long last_blink = 0;
+        if (millis() - last_blink > 1000) {
+            if (led_pin_ != 0xFF) {
+                digitalWrite(led_pin_, !digitalRead(led_pin_));
+            }
+            last_blink = millis();
+        }
+    }
+─────────────────────────────────────────────────────────────────────────────
+
+Impact:
+  ❌ CRITICAL: Board-specific code in hot path (loop)
+  ❌ Cannot unit test LED behavior
+  ❌ Different LED types (RGB, single, display) hardcoded
+  ❌ Adding new board = modify main.cpp (regression risk)
+  ❌ T-CAN485 NeoPixel control hardcoded with GPIO (doesn't work!)
+
+
+================================================================================
+VIOLATION #3: PLATFORM-SPECIFIC RESET (Lines 506-512)
+================================================================================
+Severity: HIGH
+Category: Platform Implementation Details in Command Handler
+Location: handle_control_command() function
+
+Current Code:
+─────────────────────────────────────────────────────────────────────────────
+   501 |  void handle_control_command(const char* action) {
+   502 |    if (strcmp(action, "reset") == 0) {
+   503 |      send_status("INFO", "Resetting device");
+   504 |      delay(100);
+   505 |      // Platform-specific reset
+   506 |      #ifdef PLATFORM_RP2040
+   507 |        watchdog_reboot(0, 0, 0);
+   508 |      #elif defined(PLATFORM_ESP32)
+   509 |        ESP.restart();
+   510 |      #else
+   511 |        NVIC_SystemReset();  // ARM Cortex-M (SAMD51, STM32, etc.)
+   512 |      #endif
+─────────────────────────────────────────────────────────────────────────────
+
+Problems:
+  • Lines 506-512: Platform-specific reset code in command handler
+  • main.cpp knows how to reset RP2040, ESP32, ARM Cortex-M
+  • Should be platform layer's responsibility
+  • Hard to test without hardware
+  • Adding new platform requires modifying main.cpp
+
+Correct Pattern:
+─────────────────────────────────────────────────────────────────────────────
+In src/actions/action_manager_base.h:
+    class ActionManagerBase {
+        virtual bool reset() = 0;  // Pure virtual
+    };
+
+In src/capabilities/rp2040/rp2040_action_manager.cpp:
+    bool RP2040ActionManager::reset() {
+        watchdog_reboot(0, 0, 0);
+        return true;
+    }
+
+In src/capabilities/esp32/esp32_action_manager.cpp:
+    bool ESP32ActionManager::reset() {
+        ESP.restart();
+        return true;
+    }
+
+In src/capabilities/samd51/samd51_action_manager.cpp:
+    bool SAMD51ActionManager::reset() {
+        NVIC_SystemReset();
+        return true;
+    }
+
+In src/main.cpp:
+    void handle_control_command(const char* action) {
+        if (strcmp(action, "reset") == 0) {
+            send_status("INFO", "Resetting device");
+            delay(100);
+            if (action_manager) {
+                action_manager->reset();  // ONE LINE! Platform handles it
+            }
+        }
+    }
+─────────────────────────────────────────────────────────────────────────────
+
+Impact:
+  ❌ main.cpp knows platform implementation details
+  ❌ Adding STM32 support = modify main.cpp
+  ❌ Cannot test reset without hardware
+  ❌ Each platform's reset code scattered
+
+
+================================================================================
+VIOLATION #4: PLATFORM-SPECIFIC DEFAULT RULES (Lines 123-132)
+================================================================================
+Severity: MEDIUM
+Category: Non-Extensible Platform Handling
+Location: setup() function
+
+Current Code:
+─────────────────────────────────────────────────────────────────────────────
+   106 |  // Initialize with default configuration if enabled
+   107 |  #ifdef HAS_DEFAULT_CONFIG
+   108 |    if (init_default_config(action_manager)) {
+   109 |      // Config loader handles flash initialization and default rule writing
+   110 |      send_status("INFO", "Default configuration initialized");
+   111 |    } else {
+   112 |      send_status("WARNING", "Default configuration initialization failed");
+   113 |    }
+   114 |  #endif
+   115 |
+   116 |  // Try to load rules from persistent storage first
+   117 |  uint8_t loaded = action_manager->load_rules();
+   118 |  if (loaded > 0) {
+   119 |    char details[64];
+   120 |    snprintf(details, sizeof(details), "Loaded %d rule(s) from storage", loaded);
+   121 |    send_status("INFO", "Rules restored", details);
+   122 |  } else {
+   123 |    // No saved rules, load platform-specific defaults if available
+   124 |    #ifdef PLATFORM_SAMD51
+   125 |      loaded = load_samd51_default_rules(action_manager);
+   126 |      if (loaded > 0) {
+   126 |        char details[64];
+   127 |        snprintf(details, sizeof(details), "Loaded %d default rule(s)", loaded);
+   128 |        send_status("INFO", "Default rules loaded", details);
+   129 |        // Save defaults to flash for next boot
+   130 |        action_manager->save_rules();
+   131 |      }
+   132 |    #endif
+   133 |  }
+─────────────────────────────────────────────────────────────────────────────
+
+Problems:
+  • Line 124: Only PLATFORM_SAMD51 is handled
+  • RP2040 and ESP32 don't have default rules (missing support)
+  • Not extensible - need to modify main.cpp for each platform
+  • Code duplication - load logic is the same for all platforms
+  • Should use factory method
+
+Correct Pattern:
+─────────────────────────────────────────────────────────────────────────────
+In src/actions/action_manager_factory.h:
+    class ActionManagerFactory {
+        static ActionManagerBase* create();
+
+        // NEW: Platform-specific default rule loader
+        static uint8_t load_platform_default_rules(ActionManagerBase* manager) {
+            #ifdef PLATFORM_SAMD51
+                return load_samd51_default_rules(manager);
+            #elif defined(PLATFORM_RP2040)
+                return load_rp2040_default_rules(manager);
+            #elif defined(PLATFORM_ESP32)
+                return load_esp32_default_rules(manager);
+            #else
+                return 0;  // No platform-specific defaults
+            #endif
+        }
+    };
+
+In src/main.cpp:
+    // Try to load rules from persistent storage first
+    uint8_t loaded = action_manager->load_rules();
+    if (loaded == 0) {
+        // No saved rules, load platform-specific defaults if available
+        loaded = ActionManagerFactory::load_platform_default_rules(action_manager);
+        if (loaded > 0) {
+            char details[64];
+            snprintf(details, sizeof(details), "Loaded %d default rule(s)", loaded);
+            send_status("INFO", "Default rules loaded", details);
+            action_manager->save_rules();
+        }
+    }
+─────────────────────────────────────────────────────────────────────────────
+
+Impact:
+  ❌ RP2040 and ESP32 don't get default rules support
+  ❌ Non-extensible - modifying for new platforms is error-prone
+  ❌ Violates DRY - same logic for each platform
+  ❌ Hard to verify all platforms have same logic
+
+
+================================================================================
+SUMMARY OF VIOLATIONS
+================================================================================
+
+Location: src/main.cpp
+Total Violations Found: 4
+Critical: 1
+High: 1
+Medium: 2
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ VIOLATION SEVERITY DISTRIBUTION                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│ CRITICAL (1)   █████████████████████████████████████████████████ (25%)  │
+│ HIGH (1)       ███████████████████ (25%)                                │
+│ MEDIUM (2)     ████████████████████████████████ (50%)                   │
+│                                                                         │
+│ Total Impact: HIGH - Affects architecture and testability               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Each violation violates one or more principles:
+  1. LED Setup (56-63)           → SRP, Abstraction
+  2. LED Blinking (142-153)      → SRP, Testability, DRY (CRITICAL)
+  3. Platform Reset (506-512)    → SRP, Abstraction, DIP
+  4. Default Rules (123-132)     → Extensibility, DRY
+
+
+================================================================================
+WHAT SHOULD BE IN MAIN.CPP (ALLOWED)
+================================================================================
+
+✅ Serial initialization
+✅ CAN interface creation (via factory - abstract)
+✅ Action manager creation (via factory - abstract)
+✅ Board interface creation (via factory - abstract)
+✅ Main loop coordination (calling interfaces)
+✅ Command parsing (delegating execution to managers)
+✅ Protocol message formatting (CAN_RX, CAN_TX, STATUS, etc.)
+✅ High-level flow control
+
+❌ DO NOT INCLUDE:
+  ❌ #ifdef PLATFORM_* (delegate to factories/managers)
+  ❌ #ifdef BOARD_* (use factory)
+  ❌ GPIO calls (pinMode, digitalWrite, digitalRead)
+  ❌ NeoPixel code
+  ❌ Display code
+  ❌ LED blinking logic
+  ❌ RS485/UART handling
+  ❌ SD card code
+  ❌ Sensor reading
+  ❌ Hardware reset code
+
+
+================================================================================
+VALIDATION COMMANDS
+================================================================================
+
+To find all violations in main.cpp:
+
+  # Find platform conditionals
+  grep -n "^[[:space:]]*#ifdef PLATFORM" src/main.cpp
+  grep -n "^[[:space:]]*#ifdef BOARD" src/main.cpp
+  grep -n "^[[:space:]]*#ifdef STATUS_LED_PIN" src/main.cpp
+  grep -n "^[[:space:]]*#ifdef LED_BUILTIN" src/main.cpp
+
+  # Find direct GPIO calls
+  grep -n "digitalWrite\|digitalRead\|pinMode" src/main.cpp
+
+  # Find platform-specific function calls
+  grep -n "watchdog_reboot\|ESP\.restart\|NVIC_SystemReset" src/main.cpp
+  grep -n "load_samd51_default_rules\|load_.*_default" src/main.cpp
+
+
+Expected results after fix:
+  • 0 #ifdef PLATFORM_* lines
+  • 0 #ifdef BOARD_* lines
+  • 0 digitalWrite/digitalRead/pinMode lines (except possibly in deleted code)
+  • 0 watchdog_reboot/ESP.restart/NVIC_SystemReset lines
+  • 0 platform-specific function calls
+
+
+================================================================================

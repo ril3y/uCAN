@@ -1,0 +1,251 @@
+================================================================================
+AUDIT SUMMARY: src/main.cpp - Board-Specific Code Violations
+================================================================================
+
+OVERALL STATUS: CRITICAL VIOLATIONS FOUND
+Severity Level: HIGH
+Recommendation: Fix before next board implementation
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. LED BLINKING IN MAIN LOOP (Lines 142-153) - CRITICAL VIOLATION
+   ─────────────────────────────────────────────────────────────
+   Problem: Direct GPIO access with platform-specific conditionals
+
+   Current code:
+     #ifdef STATUS_LED_PIN
+       digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+     #elif defined(LED_BUILTIN)
+       digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+     #endif
+
+   Why it's wrong:
+   • main.cpp should NOT know about GPIO pins
+   • Different boards have different LED types (GPIO vs NeoPixel vs display)
+   • Code is duplicated across platforms
+   • Cannot be unit tested without hardware
+
+   Fix: Move to BoardInterface::update_periodic()
+   - Called already in loop() at line 163
+   - Each board implementation handles its own LED strategy
+   - T-CAN485 blinks NeoPixel
+   - T-Panel updates display
+   - Generic boards do nothing (or simple GPIO blink)
+
+
+2. LED SETUP IN SETUP() (Lines 56-63) - MEDIUM VIOLATION
+   ────────────────────────────────────
+   Problem: GPIO initialization in main instead of board layer
+
+   Current code:
+     #ifdef STATUS_LED_PIN
+       pinMode(STATUS_LED_PIN, OUTPUT);
+     #elif defined(LED_BUILTIN)
+       pinMode(LED_BUILTIN, OUTPUT);
+     #endif
+
+   Fix: Move to BoardInterface::initialize()
+   - Already called in setup() at line 93
+   - Centralizes all board initialization
+   - No platform conditionals in main
+
+
+3. PLATFORM-SPECIFIC RESET (Lines 506-512) - HIGH VIOLATION
+   ──────────────────────────────────────
+   Problem: Reset code in command handler, not abstracted
+
+   Current code:
+     #ifdef PLATFORM_RP2040
+       watchdog_reboot(0, 0, 0);
+     #elif defined(PLATFORM_ESP32)
+       ESP.restart();
+     #else
+       NVIC_SystemReset();
+     #endif
+
+   Why it's wrong:
+   • main.cpp knows platform implementation details
+   • Reset is a platform concern, not main's
+   • Hard to test without hardware
+
+   Fix: Delegate to ActionManagerBase::reset()
+   - Each platform implements its own reset
+   - main.cpp just calls action_manager->reset()
+   - No platform conditionals in main
+
+
+4. PLATFORM-SPECIFIC DEFAULT RULES (Lines 123-132) - DESIGN DEBT
+   ──────────────────────────────────────────────
+   Problem: Only SAMD51 handled, not extensible
+
+   Current code:
+     #ifdef PLATFORM_SAMD51
+       loaded = load_samd51_default_rules(action_manager);
+     #endif
+
+   Why it's wrong:
+   • RP2040 and ESP32 support is missing
+   • Need factory method for extensibility
+   • Violates DRY principle
+
+   Fix: Use ActionManagerFactory::load_platform_default_rules()
+   - Factory method handles all platforms
+   - Extensible for future platforms
+   - No platform conditionals in main
+
+
+================================================================================
+ABSTRACTION DESIGN
+================================================================================
+
+Current architecture (PARTIAL):
+  main.cpp
+      ↓
+      CANInterface (correct - via factory)
+      ActionManagerBase (correct - via factory)
+      BoardInterface (EXISTS but NOT FULLY USED)
+                ↓
+                LED blink logic SHOULD be here, but it's in main.cpp
+                Reset SHOULD be delegated, but it's in main.cpp
+                Platform-specific rules SHOULD use factory, but use #ifdef
+
+Correct architecture (TARGET):
+  main.cpp (GENERIC - no #ifdef, no GPIO, no platform knowledge)
+      ↓
+      CANInterface (hardware-specific, via factory)
+      ActionManagerBase (platform-specific, via factory)
+      BoardInterface (board-specific, via factory)
+        ├─ TCAN485Board (LED blink, RS485, SD card)
+        ├─ TPanelBoard (display, touch, backlight)
+        └─ DefaultBoard (generic boards, simple LED)
+
+
+================================================================================
+IMPACT ANALYSIS
+================================================================================
+
+Current Problems:
+  ❌ Cannot unit test LED behavior
+  ❌ Cannot unit test reset behavior
+  ❌ Adding board types requires main.cpp changes
+  ❌ Platform code scattered across files
+  ❌ Hard to port to new platforms
+  ❌ Violates Single Responsibility Principle
+  ❌ Code duplication across platforms
+
+After Fixes:
+  ✅ LED logic testable (BoardInterface mock)
+  ✅ Reset logic testable (ActionManager mock)
+  ✅ Add boards without touching main.cpp
+  ✅ All platform code in dedicated files
+  ✅ Easy to support new platforms
+  ✅ Clear separation of concerns
+  ✅ No code duplication
+
+
+================================================================================
+PRIORITY FIX ORDER
+================================================================================
+
+Priority 1 - CRITICAL (Architectural Integrity):
+  1. Remove LED blink from main loop (lines 142-153)
+  2. Move LED blink to BoardInterface::update_periodic()
+  3. Update board implementations to implement update_periodic()
+
+Priority 2 - HIGH (Platform Abstraction):
+  1. Add ActionManagerBase::reset() virtual method
+  2. Implement reset() in all platform managers
+  3. Remove reset #ifdefs from main.cpp
+
+Priority 3 - MEDIUM (Extensibility):
+  1. Create ActionManagerFactory::load_platform_default_rules()
+  2. Remove PLATFORM_SAMD51 #ifdef from main.cpp
+  3. Update RP2040 support for default rules
+
+Priority 4 - CLEANUP:
+  1. Create DefaultBoard for generic boards (instead of nullptr)
+  2. Document board interface requirements
+  3. Add examples for new board implementations
+
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+When fixes are complete, verify:
+
+  [ ] No #ifdef PLATFORM_* in src/main.cpp
+  [ ] No #ifdef STATUS_LED_PIN in src/main.cpp
+  [ ] No #ifdef LED_BUILTIN in src/main.cpp
+  [ ] No #ifdef BOARD_T_* in src/main.cpp
+  [ ] No direct GPIO calls in src/main.cpp (pinMode, digitalWrite, digitalRead)
+  [ ] BoardInterface::initialize() called in setup()
+  [ ] BoardInterface::update_periodic() called in loop()
+  [ ] All GPIO logic in src/boards/*/board_impl.cpp
+  [ ] All platform-specific logic in action managers
+  [ ] Code compiles for all platforms
+  [ ] LED blinks/updates on T-CAN485
+  [ ] Display updates on T-Panel
+  [ ] Reset works on all platforms
+
+
+================================================================================
+FILES AFFECTED
+================================================================================
+
+MUST MODIFY:
+  • src/main.cpp
+  • src/boards/t_can485/board_impl.h
+  • src/boards/t_can485/board_impl.cpp
+  • src/boards/t_panel/board_impl.h
+  • src/boards/t_panel/board_impl.cpp
+  • src/actions/action_manager_base.h
+  • src/capabilities/esp32/esp32_action_manager.h
+  • src/capabilities/samd51/samd51_action_manager.h
+  • src/capabilities/rp2040/rp2040_action_manager.h
+
+SHOULD CREATE:
+  • src/boards/default/board_impl.h
+  • src/boards/default/board_impl.cpp
+  • src/actions/action_manager_factory.h
+
+NO CHANGES NEEDED:
+  • src/boards/board_interface.h (already correct)
+  • src/boards/board_factory.cpp (already correct structure)
+  • src/hal/* (already correct)
+
+
+================================================================================
+DETAILED AUDIT REPORT
+================================================================================
+
+See AUDIT_MAIN_CPP.md for:
+  • Code snippets with exact line numbers
+  • Before/after code examples
+  • Detailed explanation of each violation
+  • Step-by-step fix instructions
+  • Architecture diagrams
+
+
+================================================================================
+QUESTIONS FOR REVIEW
+================================================================================
+
+1. Should LED blink be part of update_periodic() or separate callback?
+   → Recommendation: update_periodic() for consistency with action manager
+
+2. What about LED setup for platforms without GPIO (STM32 with CubeMX)?
+   → Recommendation: BoardInterface::initialize() returns false if GPIO unavailable
+
+3. Should DefaultBoard be created or stay as nullptr?
+   → Recommendation: Create DefaultBoard for consistency, cleaner initialization
+
+4. How to handle backwards compatibility with existing platforms?
+   → Recommendation: DefaultBoard handles generic LED blink for generic boards
+
+5. Should reset be part of ActionManager or separate platform interface?
+   → Recommendation: ActionManager (it's platform-specific, not board-specific)
+
+================================================================================

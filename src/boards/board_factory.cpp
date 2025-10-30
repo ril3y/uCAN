@@ -36,11 +36,11 @@
 #endif
 
 #if defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
-    #include "rp2040/board_impl.h"
+    #include "rpi_pico/board_impl.h"
 #endif
 
 #ifdef ARDUINO_ADAFRUIT_FEATHER_M4_CAN
-    #include "samd51/board_impl.h"
+    #include "feather_m4_can/board_impl.h"
 #endif
 
 // Future board implementations:

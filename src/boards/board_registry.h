@@ -41,13 +41,13 @@
 // Board-specific includes based on platform and board variant
 #ifdef PLATFORM_RP2040
     // Currently only Raspberry Pi Pico supported for RP2040
-    #include "rp2040/rpi_pico.h"
+    #include "rpi_pico/rpi_pico.h"
     #define CURRENT_BOARD BOARD_RPI_PICO
 #endif
 
 #ifdef PLATFORM_SAMD51
     // Currently only Feather M4 CAN supported for SAMD51
-    #include "samd51/feather_m4_can.h"
+    #include "feather_m4_can/feather_m4_can.h"
     #define CURRENT_BOARD BOARD_FEATHER_M4_CAN
 #endif
 
