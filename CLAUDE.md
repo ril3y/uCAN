@@ -15,10 +15,30 @@ The system consists of two main components:
 ### Supported Hardware
 - **Raspberry Pi Pico (RP2040)** with external MCP2551 CAN transceiver
 - **Adafruit Feather M4 CAN (SAMD51)** with built-in CAN peripheral
-- **ESP32** with external CAN transceiver (future)
+- **LilyGo T-CAN485 (ESP32)** with built-in TWAI + RS485 + SD card + WS2812
+- **LilyGo T-Panel (ESP32-S3)** with built-in TWAI + 480x480 touchscreen + SD card
 - **STM32** with built-in CAN peripheral (future)
 
 ### Firmware Architecture (src/*)
+
+**Three-Layer Architecture** for maximum code reuse:
+
+1. **Platform Layer** (`src/capabilities/<chip>/`) - Chip-level APIs shared by all boards using the same MCU
+   - GPIO, PWM, ADC, CAN/TWAI controller access
+   - Platform-specific action managers (ESP32ActionManager, RP2040ActionManager, SAMD51ActionManager)
+   - Examples: `src/capabilities/esp32/`, `src/capabilities/rp2040/`, `src/capabilities/samd51/`
+
+2. **Board Layer** (`src/boards/<product>/`) - Product-specific peripherals and features
+   - Each physical board product gets its own folder named by product (not chip)
+   - Handles unique peripherals (RS485, displays, SD cards, power management)
+   - Implements `BoardInterface` for initialization, custom commands, periodic tasks
+   - Examples: `src/boards/t_can485/` (RS485+SD), `src/boards/t_panel/` (touchscreen+display)
+
+3. **Application Layer** (`src/main.cpp`) - Hardware-agnostic application logic
+   - Protocol handling, action system, rule engine
+   - Zero platform/board-specific code via abstraction layers
+
+**Additional Architecture:**
 - **Hardware Abstraction Layer (HAL)**: `src/hal/` provides platform-agnostic CAN interface
 - **Platform Detection**: Automatic detection based on compile-time defines
 - **Unified Protocol**: Implements full PROTOCOL.md specification
@@ -92,12 +112,15 @@ pio run -e feather_m4_can_250k         # 250kbps CAN bitrate
 pio run -e feather_m4_can_1m           # 1Mbps CAN bitrate
 pio run -e feather_m4_can_no_neopixel  # Disable NeoPixel for power savings
 
-# Build for ESP32 (future)
-pio run -e esp32
+# Build for ESP32 boards
+pio run -e esp32_t_can485              # LilyGo T-CAN485 (CAN + RS485 + SD)
+pio run -e esp32_t_panel               # LilyGo T-Panel (touchscreen + CAN)
 
 # Upload to specific board
 pio run -e pico --target upload
 pio run -e feather_m4_can --target upload
+pio run -e esp32_t_can485 --target upload
+pio run -e esp32_t_panel --target upload
 
 # Monitor serial output (all platforms use 115200 baud)
 pio device monitor -b 115200
@@ -108,17 +131,20 @@ pio run --target clean
 
 ### VSCode Integration
 
-VSCode tasks are configured in `.vscode/tasks.json`. Access via `Terminal > Run Task...`:
+The project includes PlatformIO integration. Use the PlatformIO extension for VSCode:
+- **PlatformIO: Build** - Build current environment
+- **PlatformIO: Upload** - Flash firmware to connected board
+- **PlatformIO: Monitor** - Open serial monitor
+- **PlatformIO: Clean** - Clean build artifacts
 
-- **Build: Pico** - Build firmware for Raspberry Pi Pico
-- **Build: Feather M4 CAN** - Build standard Feather M4 CAN firmware
-- **Build: Feather M4 CAN Debug** - Build with debug symbols and verbose output
-- **Build: Feather M4 CAN 250kbps/1Mbps** - Build with different CAN speeds
-- **Upload: Pico/Feather M4 CAN** - Upload firmware to board
-- **Monitor: Serial** - Monitor serial output
-- **Run: TUI** - Launch the Python TUI application
-- **Test: Python** - Run Python test suite
-- **Clean: All** - Clean all build artifacts
+Or use command line (recommended for multi-board development):
+```bash
+# Build and upload in one command
+pio run -e <board> --target upload
+
+# Example: Build and flash T-CAN485
+pio run -e esp32_t_can485 --target upload
+```
 
 ### TUI Development
 ```bash
@@ -154,10 +180,35 @@ isort can_tui/ tests/
 4. **PlatformIO Environment**: Add build configuration to `platformio.ini`
 
 ### Current Platform Status
-- **RP2040**: ✅ Implemented using direct can2040 integration (bypasses ACAN2040 issues)
-- **SAMD51**: ✅ Implemented using Adafruit CAN library with multiple build variants
-- **ESP32**: 🚧 Platform configuration ready, implementation needed
+- **RP2040**: ✅ Fully implemented using direct can2040 integration (Raspberry Pi Pico)
+- **SAMD51**: ✅ Fully implemented using Adafruit CAN library (Feather M4 CAN)
+- **ESP32**: ✅ Fully implemented using TWAI controller (T-CAN485, T-Panel)
+  - T-CAN485: RS485, SD card, WS2812 RGB LED support
+  - T-Panel: 480x480 touchscreen, SD card, LCD backlight control
 - **STM32**: 🚧 Platform configuration ready, implementation needed
+
+### Board-Specific Implementations
+
+**Raspberry Pi Pico** (`src/boards/rpi_pico/`)
+- Simple GPIO LED blinking on pin 25
+- Minimal board implementation demonstrating the pattern
+
+**Adafruit Feather M4 CAN** (`src/boards/feather_m4_can/`)
+- NeoPixel RGB status indication
+- Custom NeoPixel color control commands
+- 6-color cycling status display
+
+**LilyGo T-CAN485** (`src/boards/t_can485/`)
+- RS485 transceiver with automatic direction control
+- SD card logging with timestamp support
+- WS2812 RGB LED with 4-color cycling
+- ME2107 power management
+
+**LilyGo T-Panel** (`src/boards/t_panel/`)
+- 480x480 ST7701S touchscreen display
+- CST3240 capacitive touch controller
+- LCD backlight PWM control with smooth pulsing
+- SD card storage support
 
 ### Adafruit Feather M4 CAN Build Variants
 
@@ -289,3 +340,19 @@ pytest --cov=can_tui tests/
 - Built-in CAN peripheral with integrated transceiver
 - NeoPixel visual feedback: Green (TX), Yellow (RX), Red (Error)
 - USB power and programming interface
+
+#### LilyGo T-CAN485
+- Built-in TWAI (CAN) controller with transceiver (GPIO27 TX, GPIO26 RX)
+- RS485 transceiver (GPIO22 TX, GPIO21 RX, GPIO17 enable)
+- WS2812 RGB LED on GPIO4
+- SD card slot (CS=GPIO13)
+- ME2107 power enable on GPIO16
+- All peripherals pre-wired - just connect CANH/CANL and RS485 A/B
+
+#### LilyGo T-Panel
+- Built-in TWAI (CAN) controller (requires external transceiver)
+- 480x480 ST7701S touchscreen display
+- CST3240 capacitive touch (I2C)
+- LCD backlight control on GPIO33
+- SD card slot (CS=GPIO34)
+- USB-C power and programming
