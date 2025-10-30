@@ -54,10 +54,10 @@
 #ifdef PLATFORM_ESP32
     // ESP32 supports multiple board variants
     #if defined(BOARD_T_CAN485)
-        #include "esp32/t_can485.h"
+        #include "t_can485/board_config.h"
         #define CURRENT_BOARD BOARD_LILYGO_T_CAN485
     #elif defined(BOARD_T_PANEL)
-        #include "esp32/t_panel.h"
+        #include "t_panel/board_config.h"
         #define CURRENT_BOARD BOARD_LILYGO_T_PANEL
     #else
         // Default to generic ESP32 DevKit
@@ -103,7 +103,10 @@ inline const BoardConfig& get_board_config() {
 #define CAN_MAX_BITRATE     (get_board_config().can.max_bitrate)
 
 // Resource limits
-#define MAX_ACTION_RULES    (get_board_config().resources.max_action_rules)
+// MAX_ACTION_RULES must be compile-time constant for array sizing
+// We use the maximum across all boards, then check board limit at runtime
+#define MAX_ACTION_RULES_COMPILE_TIME 64  // Maximum across all boards (SAMD51)
+#define MAX_ACTION_RULES    MAX_ACTION_RULES_COMPILE_TIME
 #define GPIO_COUNT          (get_board_config().resources.gpio_count)
 
 // Feature checks
