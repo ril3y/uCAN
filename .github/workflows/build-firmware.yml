@@ -82,6 +82,60 @@ jobs:
           size .pio/build/${{ matrix.environment }}/firmware.elf
         fi
 
+  analyze:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache PlatformIO
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.platformio
+          .pio
+        key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-
+
+    - name: Install PlatformIO
+      run: |
+        pip install platformio
+
+    - name: Build all platforms for analysis
+      run: |
+        echo "Building all platforms to generate linker maps..."
+        pio run -e feather_m4_can -e pico -e esp32_t_can485 -e esp32_t_panel
+
+    - name: Run firmware analysis
+      run: |
+        echo "Analyzing firmware binaries for modularity and memory issues..."
+        python python/analyze_firmware.py | tee firmware_analysis_report.txt
+
+    - name: Upload analysis report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: firmware-analysis-report
+        path: firmware_analysis_report.txt
+        retention-days: 90
+
+    - name: Upload linker maps
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: linker-maps
+        path: |
+          .pio/build/*/firmware.map
+        retention-days: 30
+
   test:
     runs-on: ubuntu-latest
     needs: build
@@ -113,7 +167,7 @@ jobs:
 
   create-release:
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build, analyze, test]
     if: github.event_name == 'release'
 
     steps:
@@ -227,7 +281,7 @@ jobs:
 
   build-status:
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build, analyze, test]
     if: always()
 
     steps:
@@ -235,6 +289,10 @@ jobs:
       run: |
         if [ "${{ needs.build.result }}" != "success" ]; then
           echo "Build failed!"
+          exit 1
+        fi
+        if [ "${{ needs.analyze.result }}" != "success" ]; then
+          echo "Firmware analysis failed!"
           exit 1
         fi
         if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then

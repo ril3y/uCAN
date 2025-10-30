@@ -187,13 +187,23 @@ class FirmwareAnalyzer:
         else:
             print(f"\n[+] All generic code is platform-agnostic")
 
-    def generate_report(self):
-        """Generate summary report"""
+    def generate_report(self) -> Dict:
+        """Generate summary report and return violations"""
         print(f"\n{'='*80}")
         print(f"Summary Report")
         print(f"{'='*80}")
 
+        violations = {
+            "modularity_errors": 0,
+            "memory_warnings": 0,
+            "source_violations": 0,
+            "total_issues": 0,
+            "passed": True
+        }
+
+        # Check modularity
         total_pollution = sum(len(r.get("board_pollution", [])) for r in self.results.values())
+        violations["modularity_errors"] = total_pollution
 
         if total_pollution == 0:
             print(f"\n[+] MODULARITY: EXCELLENT")
@@ -202,7 +212,9 @@ class FirmwareAnalyzer:
         else:
             print(f"\n[!] MODULARITY: ISSUES DETECTED")
             print(f"   - {total_pollution} board pollution issues found")
+            violations["passed"] = False
 
+        # Check memory usage
         print(f"\n[*] Memory Usage Summary:")
         for env, result in self.results.items():
             if "linked_modules" in result:
@@ -212,7 +224,12 @@ class FirmwareAnalyzer:
                 print(f"    - Large symbols (>1KB): {large_syms}")
                 print(f"    - Large globals (>256B): {large_globals}")
 
+        violations["total_issues"] = violations["modularity_errors"] + violations["memory_warnings"] + violations["source_violations"]
+        return violations
+
 def main():
+    import sys
+
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     analyzer = FirmwareAnalyzer(project_root)
 
@@ -221,7 +238,21 @@ def main():
 
     analyzer.analyze_all_environments()
     analyzer.check_source_modularity()
-    analyzer.generate_report()
+    violations = analyzer.generate_report()
+
+    # Print final status
+    print(f"\n{'='*80}")
+    if violations["passed"]:
+        print(f"[+] ANALYSIS PASSED - No critical issues detected")
+        print(f"{'='*80}")
+        return 0
+    else:
+        print(f"[!] ANALYSIS FAILED - {violations['total_issues']} issue(s) detected")
+        print(f"    - Modularity errors: {violations['modularity_errors']}")
+        print(f"    - Memory warnings: {violations['memory_warnings']}")
+        print(f"    - Source violations: {violations['source_violations']}")
+        print(f"{'='*80}")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    exit(main())
