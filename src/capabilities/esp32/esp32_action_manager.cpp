@@ -1,6 +1,7 @@
 #ifdef PLATFORM_ESP32
 
 #include "esp32_action_manager.h"
+#include "../../boards/board_interface.h"
 #include "../../boards/board_registry.h"
 #include <Preferences.h>
 #include <Arduino.h>
@@ -112,8 +113,7 @@ public:
 
 ESP32ActionManager::ESP32ActionManager()
     : ActionManagerBase()
-    , neopixel_(nullptr)
-    , neopixel_available_(false) {
+    , board_impl_(nullptr) {
 
     // Initialize PWM channel tracking
     for (int i = 0; i < 16; i++) {
@@ -124,7 +124,11 @@ ESP32ActionManager::ESP32ActionManager()
 }
 
 ESP32ActionManager::~ESP32ActionManager() {
-    cleanup_neopixel();
+    // Clean up board implementation
+    if (board_impl_) {
+        delete board_impl_;
+        board_impl_ = nullptr;
+    }
 
     // Detach all PWM channels
     for (int i = 0; i < 16; i++) {
@@ -140,9 +144,16 @@ bool ESP32ActionManager::initialize(CANInterface* can_if) {
         return false;
     }
 
-    // Initialize NeoPixel if available on this board
-    if (HAS_NEOPIXEL) {
-        init_neopixel();
+    // Create board-specific implementation (if available)
+    board_impl_ = BoardFactory::create();
+    if (board_impl_) {
+        if (!board_impl_->initialize(this)) {
+            Serial.println("WARNING;Board-specific initialization failed");
+            delete board_impl_;
+            board_impl_ = nullptr;
+        } else {
+            Serial.printf("STATUS;INFO;Board: %s\n", board_impl_->get_board_name());
+        }
     }
 
     Serial.println("ESP32 Action Manager initialized");
@@ -202,18 +213,10 @@ bool ESP32ActionManager::execute_pwm_action(uint8_t pin, uint8_t duty) {
 
 // NeoPixel Actions
 bool ESP32ActionManager::execute_neopixel_action(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
-    if (!neopixel_available_ || !neopixel_) {
-        return false;
-    }
-
-    // Apply brightness scaling
-    uint16_t scaled_r = (r * brightness) / 255;
-    uint16_t scaled_g = (g * brightness) / 255;
-    uint16_t scaled_b = (b * brightness) / 255;
-
-    neopixel_->setPixelColor(0, scaled_r, scaled_g, scaled_b);
-    neopixel_->show();
-    return true;
+    // NeoPixel support is now handled by board implementations
+    // Generic ESP32 boards don't have NeoPixels
+    // Board-specific implementations (T-CAN485, etc.) handle their own NeoPixels
+    return false;
 }
 
 // ADC Actions
@@ -294,15 +297,24 @@ uint8_t ESP32ActionManager::load_rules_impl() {
 
 // Custom Commands
 void ESP32ActionManager::register_custom_commands() {
-    // Register DAC command (only on original ESP32)
+    // Register platform-wide commands
+
+    // DAC command (only on original ESP32 - platform feature check)
     #if !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32C3)
+    if (get_board_config().has_feature(FEATURE_GPIO_DAC)) {
         static DACCommand dac_cmd;
         custom_commands_.register_command(&dac_cmd);
+    }
     #endif
 
-    // Register WiFi info command
+    // WiFi info command (available on all ESP32 variants)
     static WiFiCommand wifi_cmd;
     custom_commands_.register_command(&wifi_cmd);
+
+    // Register board-specific commands
+    if (board_impl_) {
+        board_impl_->register_custom_commands(custom_commands_);
+    }
 }
 
 // Action Definition Queries
@@ -319,37 +331,6 @@ const ActionDefinition* const* ESP32ActionManager::get_all_action_definitions(ui
 }
 
 // Private Helper Methods
-
-void ESP32ActionManager::init_neopixel() {
-    if (!HAS_NEOPIXEL) {
-        return;
-    }
-
-    uint8_t pin = NEOPIXEL_PIN;
-    if (pin == 0) {
-        return;
-    }
-
-    neopixel_ = new Adafruit_NeoPixel(1, pin, NEO_GRB + NEO_KHZ800);
-    if (neopixel_) {
-        neopixel_->begin();
-        neopixel_->setBrightness(50);  // Default 50% brightness
-        neopixel_->setPixelColor(0, 0, 0, 0);  // Off
-        neopixel_->show();
-        neopixel_available_ = true;
-        Serial.printf("NeoPixel initialized on pin %d\n", pin);
-    }
-}
-
-void ESP32ActionManager::cleanup_neopixel() {
-    if (neopixel_) {
-        neopixel_->setPixelColor(0, 0, 0, 0);
-        neopixel_->show();
-        delete neopixel_;
-        neopixel_ = nullptr;
-    }
-    neopixel_available_ = false;
-}
 
 uint8_t ESP32ActionManager::allocate_pwm_channel(uint8_t pin) {
     // Check if pin already has a channel

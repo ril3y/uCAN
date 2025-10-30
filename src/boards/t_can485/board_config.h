@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file t_can485.h
+ * @file board_config.h
  * @brief LilyGo T-CAN485 board configuration
  *
  * Complete board definition for the LilyGo T-CAN485, an ESP32-based
@@ -20,16 +20,11 @@
  * - Bluetooth: Classic + BLE 4.2
  *
  * Pin Configuration:
- * - CAN TX: GPIO (configurable via TWAI)
- * - CAN RX: GPIO (configurable via TWAI)
- * - CAN Speed Mode: GPIO (for SN65HVD231 slope control)
- * - RS485 TX: GPIO 22
- * - RS485 RX: GPIO 21
- * - RS485 EN: GPIO 9
- * - RS485 Callback: GPIO 17
- * - WS2812 Data: GPIO 4
- * - ME2107 Enable: GPIO 16
- * - SD Card: GPIO 13 (CS), GPIO 15 (MOSI), GPIO 2 (MISO), GPIO 14 (SCLK)
+ * - CAN TX: GPIO27, CAN RX: GPIO26, CAN_SE: GPIO23
+ * - RS485 TX: GPIO22, RS485 RX: GPIO21, RS485 EN: GPIO17
+ * - WS2812 Data: GPIO4
+ * - ME2107 Enable: GPIO16
+ * - SD Card: CS=GPIO13, MOSI=GPIO15, MISO=GPIO2, SCLK=GPIO14
  *
  * Features:
  * - Industrial voltage input (5-12V via ME2107 boost converter)
@@ -39,6 +34,7 @@
  * - WiFi/BT for remote monitoring
  *
  * Purchase: https://pt.aliexpress.com/item/1005003624034092.html
+ * Documentation: https://github.com/ril3y/T-CAN485
  */
 
 #include "../board_config.h"
@@ -54,7 +50,7 @@ const BoardPinConfig t_can485_pins = {
     .can_speed_mode_pin = 23,     // Same as standby (CAN_SE controls slope/standby)
 
     // ME2107 boost converter enable pin
-    .power_enable_pin = 16,       // GPIO16 -> ME2107 EN (assumed from docs)
+    .power_enable_pin = 16,       // GPIO16 -> ME2107 EN
 
     // WS2812 RGB NeoPixel LED
     .neopixel_pin = 4,            // IO04 -> WS2812 Data
@@ -71,7 +67,6 @@ const BoardPinConfig t_can485_pins = {
     .rs485_tx_pin = 22,           // IO22 -> RS485_TX
     .rs485_rx_pin = 21,           // IO21 -> RS485_RX
     .rs485_enable_pin = 17,       // IO17 -> RS485_EN (DE/RE control)
-    // Note: IO19 is RS485_SE (speed/enable select)
 };
 
 // T-CAN485 memory configuration

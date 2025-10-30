@@ -4,20 +4,27 @@
 
 #include "../../actions/action_manager_base.h"
 #include "../../actions/action_types.h"
-#include <Adafruit_NeoPixel.h>
+
+// Forward declarations
+class BoardInterface;
 
 /**
  * ESP32ActionManager
  *
  * ESP32-specific implementation of the action manager.
- * Supports GPIO, PWM (LEDC), ADC, DAC, and optional NeoPixel.
+ * Provides platform-level APIs: GPIO, PWM (LEDC), ADC, DAC, CAN.
+ *
+ * Architecture:
+ * - This class provides ESP32 platform APIs (hardware peripherals)
+ * - Board-specific features (NeoPixels, RS485, SD cards, displays) are
+ *   handled by BoardInterface implementations
+ * - Platform code stays clean and focused on core peripheral support
  *
  * Features:
  * - GPIO: Digital I/O on all GPIO pins
  * - PWM: 16 channels via LEDC (LED Control) peripheral
  * - ADC: 18 channels (2x SAR ADCs), 12-bit resolution
- * - DAC: 2 channels (GPIO25, GPIO26), 8-bit resolution
- * - NeoPixel: Optional WS2812 RGB LED (board-dependent)
+ * - DAC: 2 channels (GPIO25, GPIO26), 8-bit resolution (original ESP32 only)
  * - Flash Storage: Preferences API for non-volatile storage
  */
 class ESP32ActionManager : public ActionManagerBase {
@@ -46,9 +53,8 @@ protected:
     const ActionDefinition* const* get_all_action_definitions(uint8_t& count) const override;
 
 private:
-    // NeoPixel support (if board has one)
-    Adafruit_NeoPixel* neopixel_;
-    bool neopixel_available_;
+    // Board-specific implementation (optional)
+    BoardInterface* board_impl_;
 
     // PWM management (LEDC)
     struct PWMChannel {
@@ -59,8 +65,6 @@ private:
     PWMChannel pwm_channels_[16];  // ESP32 has 16 LEDC channels
 
     // Helper methods
-    void init_neopixel();
-    void cleanup_neopixel();
     uint8_t allocate_pwm_channel(uint8_t pin);
     void free_pwm_channel(uint8_t pin);
     bool setup_pwm(uint8_t pin, uint8_t channel);

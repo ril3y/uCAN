@@ -6,17 +6,9 @@
 #include "../hal/can_interface.h"
 #include "../hal/platform_config.h"
 #include "../capabilities/board_capabilities.h"
+#include "../boards/board_registry.h"
 
-// Platform-specific maximum rules (compile-time constants)
-#ifdef PLATFORM_RP2040
-    #define MAX_ACTION_RULES 16    // RP2040 limit
-#elif defined(PLATFORM_SAMD51)
-    #define MAX_ACTION_RULES 64    // SAMD51 limit
-#elif defined(PLATFORM_ESP32)
-    #define MAX_ACTION_RULES 32    // ESP32 limit
-#else
-    #define MAX_ACTION_RULES 8     // Default/minimal
-#endif
+// MAX_ACTION_RULES is defined in board_registry.h based on board config
 
 /**
  * ActionManagerBase
