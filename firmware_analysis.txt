@@ -1,0 +1,118 @@
+uCAN Firmware Analysis
+Project: X:\Projects\embedded\uCAN
+
+================================================================================
+Analyzing: feather_m4_can
+================================================================================
+
+[*] Modularity Check:
+  [+] Clean - no cross-board contamination
+
+[*] Linked Modules: 1
+
+[*] Large Symbols (>1KB):
+  - *default*: 18,446,744,073,709,551,615 bytes
+  - address: 536,872,048 bytes
+  - address: 536,871,224 bytes
+  - FLASH: 507,904 bytes
+  - RAM: 196,608 bytes
+
+[*] Global Variables (>256 bytes):
+  - load: 3,456 bytes
+  - load: 824 bytes
+
+================================================================================
+Analyzing: pico
+================================================================================
+
+[*] Modularity Check:
+  [+] Clean - no cross-board contamination
+
+[*] Linked Modules: 1
+
+[*] Large Symbols (>1KB):
+  - *default*: 4,294,967,295 bytes
+  - address: 537,137,152 bytes
+  - address: 537,133,056 bytes
+  - address: 536,875,776 bytes
+  - address: 536,875,772 bytes
+
+[*] Global Variables (>256 bytes):
+  - load: 6,316 bytes
+  - load: 4,668 bytes
+  - C:/Users/riley/.platformio/packages/toolchain-rp2040-earlephilhower/bin/../lib/gcc/arm-none-eabi/14.3.0/../../../../arm-none-eabi/lib/thumb\libc.a(libc_a-mallocr.o): 1,040 bytes
+  - C:/Users/riley/.platformio/packages/toolchain-rp2040-earlephilhower/bin/../lib/gcc/arm-none-eabi/14.3.0/../../../../arm-none-eabi/lib/thumb\libc.a(libc_a-locale.o): 364 bytes
+  - C:/Users/riley/.platformio/packages/toolchain-rp2040-earlephilhower/bin/../lib/gcc/arm-none-eabi/14.3.0/../../../../arm-none-eabi/lib/thumb\libc.a(libc_a-findfp.o): 344 bytes
+
+================================================================================
+Analyzing: esp32_t_can485
+================================================================================
+
+[*] Modularity Check:
+  [+] Clean - no cross-board contamination
+
+[*] Linked Modules: 1
+
+[*] Large Symbols (>1KB):
+  - *default*: 18,446,744,073,709,551,615 bytes
+  - =: 1,074,154,484 bytes
+  - =: 1,074,154,476 bytes
+  - =: 1,074,154,364 bytes
+  - =: 1,074,154,340 bytes
+
+[*] Global Variables (>256 bytes):
+  - 0x000000003ffbdb60: 18,216 bytes
+  - 0x000000003ffc2288: 8,320 bytes
+  - C:\Users\riley\.platformio\packages\framework-arduinoespressif32\tools\sdk\esp32\lib\libbt.a(hli_vectors.S.obj): 4,380 bytes
+  - C:\Users\riley\.platformio\packages\framework-arduinoespressif32\tools\sdk\esp32\lib\libfreertos.a(portasm.S.obj): 4,204 bytes
+  - C:\Users\riley\.platformio\packages\framework-arduinoespressif32\tools\sdk\esp32\lib\libxtensa.a(xtensa_intr_asm.S.obj): 1,024 bytes
+
+================================================================================
+Analyzing: esp32_t_panel
+================================================================================
+
+[*] Modularity Check:
+  [+] Clean - no cross-board contamination
+
+[*] Linked Modules: 0
+
+[*] Large Symbols (>1KB):
+  - *default*: 18,446,744,073,709,551,615 bytes
+  - =: 1,611,653,120 bytes
+  - =: 1,073,767,468 bytes
+  - =: 1,073,767,456 bytes
+  - =: 1,073,767,444 bytes
+
+[*] Global Variables (>256 bytes):
+  - 0x000000003fc92570: 14,264 bytes
+  - 0x000000003fc95d28: 8,232 bytes
+  - C:/Users/riley/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_qspi\libfreertos.a(portasm.S.obj): 4,204 bytes
+  - C:/Users/riley/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/lib\libxtensa.a(xtensa_intr_asm.S.obj): 1,024 bytes
+
+================================================================================
+Source Code Modularity Analysis
+================================================================================
+
+[+] All generic code is platform-agnostic
+
+================================================================================
+Summary Report
+================================================================================
+
+[+] MODULARITY: EXCELLENT
+   - No cross-platform pollution detected
+   - Each build only includes its platform-specific code
+
+[*] Memory Usage Summary:
+  feather_m4_can:
+    - Large symbols (>1KB): 16
+    - Large globals (>256B): 2
+  pico:
+    - Large symbols (>1KB): 355
+    - Large globals (>256B): 5
+  esp32_t_can485:
+    - Large symbols (>1KB): 2522
+    - Large globals (>256B): 5
+  esp32_t_panel:
+    - Large symbols (>1KB): 4284
+    - Large globals (>256B): 4
